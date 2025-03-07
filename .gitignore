@@ -112,7 +112,6 @@ kofam_database/
 # Ignore the output folder of the stand alone tool
 #microbetag_run/
 hmmout/
-PhyloMint/
 MetaNetX/
 
 microbetagDB/mappings/gtdb_ncbi/
