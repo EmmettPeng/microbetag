@@ -32,9 +32,8 @@ def buildDG(sbml):
             for p in prod:
                 DG.add_edge(r,p)
 
-        # In case of reversible reactions, we consider that too
-        # TODO (2025-03-07): Find a way to check whether the check of the exchange reaction in necessary
-        if rxn.reversible and rxn.getId() not in exchange_reactions:
+        # NOTE (2025-03-07): In case of reversible reactions, we consider that too
+        if rxn.reversible:
             react = [i.getSpecies() for i in rxn.getListOfProducts()]
             prod = [j.getSpecies() for j in rxn.getListOfReactants()]
             for r in react:
