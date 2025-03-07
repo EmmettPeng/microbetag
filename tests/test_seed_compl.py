@@ -19,8 +19,6 @@ seed_complements = ExportSeedComplementarities(config)
 
 seed_complements.update()
 
-print("updated ok")
-
 seed_complements.map_carveme_seeds()
 
 seed_complements.module_related_seeds()

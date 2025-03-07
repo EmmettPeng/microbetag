@@ -15,14 +15,16 @@ def buildDG(sbml):
     document = readSBML(sbml)
     model = document.getModel()
 
-    # get reactions
-    rxns = (model.getListOfReactions())
+    # # get reactions
+    # rxns = (model.getListOfReactions())
 
     # get exchange reactions
-    exchange_reactions = [r.getId() for r in model.getListOfReactions() if r.getId().startswith("R_EX_")]
+    cellular_reactions = [r for r in model.getListOfReactions() if not r.getId().startswith("R_EX_")]
+    exchange_reactions = [r for r in model.getListOfReactions() if r.getId().startswith("R_EX_")]
 
     # get reaction and product and construct directed graph
-    for rxn in rxns:
+    # for rxn in rxns:
+    for rxn in cellular_reactions:
 
         react = [i.getSpecies() for i in rxn.getListOfReactants()]
         prod = [j.getSpecies() for j in rxn.getListOfProducts()]

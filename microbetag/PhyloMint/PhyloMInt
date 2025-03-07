@@ -157,7 +157,7 @@ def process_sbml(sbml_path):
     try:
         DG_sbml = BuildGraphNetX.buildDG(sbml_path)
     except:
-        print(">>> PROBLEM WITH: ", sbml_path)
+        print("Failed to run PhyloMint for:", sbml_path)
         return
 
     # Get sets !
