@@ -6,6 +6,7 @@ from microbetag.config import Config
 from microbetag.seed_complementarity import ExportSeedComplementarities
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# root_dir = os.path.dirname(os.getcwd())
 test_data = os.path.join(root_dir, "test_data", "test_seed_compl")
 output_dir = os.path.join(test_data, "output_files")
 
@@ -16,8 +17,6 @@ with open(config_file, 'r') as yaml_file:
 
 
 seed_complements = ExportSeedComplementarities(config)
-
-seed_complements.update()
 
 seed_complements.map_carveme_seeds()
 
