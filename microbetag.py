@@ -258,12 +258,6 @@ if config.seed_complementarity:
     in this case, we should also edit the ConfidenceScore dictionary
     by removing seeds that were removed in the update()
     """
-    if not os.path.exists(seed_complements.updated_seed_sets):
-        logging.info("Updating seed and non seed sets!")
-        seed_complements.update()
-    else:
-        logging.info("Seed sets already updated.")
-
     if config.genre_reconstruction_with == "carveme":
         logging.info("We will map the BIGG compounds to ModelSEED ones.\
             \nIn the future, we will map BiGG ids to KEGG so we do not have to go through ModelSEED in this scenario.")
