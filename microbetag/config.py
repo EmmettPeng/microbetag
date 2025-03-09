@@ -208,7 +208,7 @@ class Config:
             else False
         )
         if self.network_clustering:
-            self.prev_manta_net = conf.get("prev_clustered_network").get("file_path")
+            self.prev_manta_net = conf.get("manta_network").get("file_path")
             self.manta_net = (
                 os.path.join(self.base_dir, self.prev_manta_net)
                 if self.prev_manta_net is not None

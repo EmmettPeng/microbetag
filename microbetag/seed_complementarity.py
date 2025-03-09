@@ -11,6 +11,18 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 from .utils import convert_to_json_serializable
 
+
+def process_sets(file_path, compound_prefix, ex_suffix, int_suffix):
+    with open(file_path) as f:
+        sets = json.load(f)
+    updated_sets = sets.copy()
+    for k, v in sets.items():
+        tmp_v = [x.split("_", 1)[-1] if x.split("_")[0] == compound_prefix else x for x in v]
+        new_v = [x.rsplit("_", 1)[0] if x.split("_")[-1] in [ex_suffix, int_suffix] else x for x in tmp_v]
+        updated_sets[k] = new_v
+    return updated_sets
+
+
 class ExportSeedComplementarities():
     """
     Class to  export seed complements.
@@ -26,29 +38,23 @@ class ExportSeedComplementarities():
         config = Config(yaml.safe_load(yaml_file), config_file)
 
     seed_complements = ExportSeedComplementarities(config)
-    seed_complements.update()
     """
     def __init__(self, config):
         self.seeds = config.seeds
         self.seed_sets = os.path.join(config.seeds, "SeedSetDic.json")
-        self.nonseed_sets = os.path.join(config.seeds, "nonSeedSetDic.json")
+        self.non_seed_sets = os.path.join(config.seeds, "nonSeedSetDic.json")
         self.genres = config.genres
         self.logfile = os.path.join(config.seeds, "log.tsv")
-        self.updated_seed_sets = os.path.join(config.seeds, "updated_SeedsDic.json")
-        self.updated_non_seed_sets = os.path.join(config.seeds, "updated_nonSeedsDic.json")
         self.seed_ko_mo = config.seed_ko_mo
         self.module_seeds = os.path.join(self.seeds, "module_related_seeds.pckl")
         self.module_non_seeds = os.path.join(self.seeds, "module_related_non_seeds.pckl")
         self.seed_complements = os.path.join(self.seeds, "seed_complements.pckl")
         self.metanetx_compounds = config.metanetx_compounds
         self.genre_reconstruction_with = config.genre_reconstruction_with
-
-        self.ex_suffix = "_e" if self.genre_reconstruction_with == "carveme" else "_e0"
-        self.int_suffix = "_c" if self.genre_reconstruction_with == "carveme" else "_c0"
-
+        self.ex_suffix = "e" if self.genre_reconstruction_with == "carveme" else "e0"
+        self.int_suffix = "c" if self.genre_reconstruction_with == "carveme" else "c0"
         # In case of carveme
-        self.periplasm = "_p"
-        self.compound_prefix = "M_"
+        self.compound_prefix = "M"
 
         if config.users_models:
             if len(os.listdir(config.genres)) != len(os.listdir(config.for_reconstructions)):
@@ -59,85 +65,8 @@ class ExportSeedComplementarities():
                 for file in genre_files:
                     dest_path = os.path.join(config.genres, os.path.basename(file))
                     shutil.copy(file, dest_path)
-
-    def update(self):
-        """
-        PhyloMInt does not consider the
-        Update seed and non-seed sets returned by PhyloMint by:
-        - removing compounds from seed sets that are related to environmental metabolites that can be produced in several ways within the cell.
-        - removing from non-seed sets compounds that cannot be produced in any other way than from entering the cell from the environment.
-
-        If both _c0 and _e0 exist in the seed list, _e0 is kept.
-        If _c0 is missing from the model, _e0 is kept as a seed.
-        If _c0 can be produced without _e0, _e0 is not a seed.
-        Otherwise, _e0 is kept as a seed and _c0 is removed from non-seeds.
-
-        """
-        updated_seeds = {}
-        updated_nonSeeds = {}
-        current_seeds = json.load(open(self.seed_sets, "r"))
-        current_nonSeeds = json.load(open(self.nonseed_sets, "r"))
-
-        for xml in os.listdir(self.genres):
-
-            s1 = time.time()
-
-            model_id, _ = os.path.splitext(xml)
-            model       = cobra.io.read_sbml_model(os.path.join(self.genres, xml))
-
-            tmp_seeds     = [x.lstrip(self.compound_prefix) for x in current_seeds[model_id]]
-            tmp_seeds_main = set(["_".join(pot_seed.split("_")[:-1]) for pot_seed in tmp_seeds])
-
-            tmp_non_seeds = [x.lstrip(self.compound_prefix) for x in current_nonSeeds[model_id]]
-            tmp_non_seeds_main = set(["_".join(pot_nonseed.split("_")[:-1]) for pot_nonseed in tmp_non_seeds])
-
-            models_non_seeds = tmp_non_seeds_main.copy()
-            model_seeds = set()
-
-            # Check if we keep intra- or extracellular compound
-            for seed_id in tmp_seeds_main:
-
-                ex = seed_id + self.ex_suffix
-                cel = seed_id + self.int_suffix
-                per = seed_id + self.periplasm
-
-                # NOTE (2025-03-07):
-                # PhyloMInt does not consider the fact that in a metabolic model, you may have the same metabolites across different compartments
-                reactions = model.reactions - model.exchanges
-                check = [
-                    rxn.id for rxn in reactions
-                    if (
-                        # TODO (2025-03-07): Should we remove this the reversibility check ?
-                        # not rxn.reversibility and
-                        any(m.id == cel for m in rxn.products) and
-                        all(m.id not in {ex, per} for m in rxn.reactants + rxn.products)
-                    )
-                ]
-
-                if len(check) == 0:
-                    model_seeds.add(seed_id)
-
-            for nonseed_id in tmp_non_seeds_main:
-                if nonseed_id in  model_seeds:
-                    models_non_seeds.discard(nonseed_id)
-
-            print("original # of seeds:", len(tmp_seeds), "updated # of seeds:", len(model_seeds) )
-            print("original # of non-seeds:", len(tmp_non_seeds), "updated # of non-seeds:", len(models_non_seeds) )
-
-            # Update dics
-            updated_seeds[model_id] = list(model_seeds)
-            updated_nonSeeds[model_id] = list(models_non_seeds)
-
-            s2 = time.time()
-            logging.info(f"{s2-s1} seconds for a .xm_tags load")
-
-        logging.info("Update function is done and about to save updated json files.")
-
-        with open(self.updated_seed_sets, "w") as f:
-            json.dump(convert_to_json_serializable(updated_seeds), f)
-
-        with open(self.updated_non_seed_sets, "w") as f:
-            json.dump(convert_to_json_serializable(updated_nonSeeds), f)
+        self.updated_seeds     = process_sets(self.seed_sets, self.compound_prefix, self.ex_suffix, self.int_suffix)
+        self.updated_non_seeds = process_sets(self.non_seed_sets, self.compound_prefix, self.ex_suffix, self.int_suffix)
 
     def module_related_seeds(self):
         """
@@ -154,12 +83,16 @@ class ExportSeedComplementarities():
         patricId_to_seeds_of_interest = {}
         patricId_to_non_seeds_of_interest = {}
         mean_non_seedset_length = 0 ; mean_non_seedset_of_interest = 0
-        non_seedset_file = json.load(open(self.updated_non_seed_sets,"r"))
-        model_names = list(non_seedset_file.keys())
+        # non_seedset_file = json.load(open(self.non_seed_sets,"r"))
+        # model_names = list(non_seedset_file.keys())
+        model_names = list(self.updated_non_seeds.keys())
 
         for smodel_name in model_names:
-            non_seedset = set( [x[2:] for x in non_seedset_file[smodel_name]] )
-            non_seedset_no_compartments = set( [x[2:].rsplit("_", 1)[0] for x in non_seedset_file[smodel_name] ])
+            non_seedset = set( [x[2:] for x in self.updated_non_seeds[smodel_name]] )
+            non_seedset_no_compartments = set([
+                x[2:].rsplit("_", 1)[0]
+                for x in self.updated_non_seeds[smodel_name]
+            ])
             non_seeds_of_interest = non_seedset_no_compartments.intersection(modelseed_compounds_of_interest)
             mean_non_seedset_length += len(non_seedset)
             patricId_to_non_seeds_of_interest[smodel_name] = non_seeds_of_interest
@@ -167,20 +100,18 @@ class ExportSeedComplementarities():
 
         mean_seedset_length = 0
         mean_seedset_of_interest = 0
-        seedset_file = json.load(open(self.updated_seed_sets, "r"))
-        model_names = list(seedset_file.keys())
-
+        # seedset_file = json.load(open(self.seed_sets, "r"))
+        # model_names = list(seedset_file.keys())
+        model_names = list(self.updated_seeds.keys())
         for model_name in model_names:
             number_of_models += 1
             # Get seeds with and without their compartment specific part
-            seedset = set([x[2:]  for x in seedset_file[model_name]])
+            seedset = set([x[2:]  for x in self.updated_seeds[model_name]])
             seedset_no_compartments = set([
-                x[2:].rsplit("_", 1)[0]  for x in seedset_file[model_name]
+                x[2:].rsplit("_", 1)[0]  for x in self.updated_seeds[model_name]
             ])
             mean_seedset_length += len(seedset)
-
             seeds_of_interest = seedset_no_compartments.intersection(modelseed_compounds_of_interest)
-
             seeds_of_interest_tmp = list(seeds_of_interest.copy())
             for pot_seed in seeds_of_interest:
                 if pot_seed in patricId_to_non_seeds_of_interest[model_name]:
@@ -264,15 +195,6 @@ class ExportSeedComplementarities():
         [REMEMBER] MGG points to modelseed ids
         We will map
         """
-        with open(self.updated_seed_sets) as f:
-            updated_seeds = json.load(f)
-        with open(self.updated_non_seed_sets) as f:
-            updated_non_seeds = json.load(f)
-        bigg_seeds = os.path.join(self.seeds, "updatedBiggSeedsDic.json")
-        bigg_non_seeds = os.path.join(self.seeds, "updatedBiggNonSeedsDic.json")
-
-        shutil.move(self.updated_seed_sets, bigg_seeds)
-        shutil.move(self.updated_non_seed_sets, bigg_non_seeds)
 
         # Open the tar.gz file
         with tarfile.open(self.metanetx_compounds, "r:gz") as tar:
@@ -292,16 +214,20 @@ class ExportSeedComplementarities():
         metanetx_seed_compound = metanetx[metanetx["source_namespace"] == "seed.compound"]
         merged_df = pd.merge(metanetx_bigg_metabolite, metanetx_seed_compound, on="id", how="left")
         bigg2seed = merged_df.groupby("source_id_x")["source_id_y"].apply(list).to_dict()
-        print("\n\n>>>>", bigg2seed)
 
-        updated_seeds_biggIds, _     = process_carve_seeds(updated_seeds, bigg2seed, self.int_suffix)
-        updated_non_seeds_biggIds, _ = process_carve_seeds(updated_non_seeds, bigg2seed, self.int_suffix)
+        seeds_biggIds, _     = process_carve_seeds(self.updated_seeds, bigg2seed, self.int_suffix)
+        non_seeds_biggIds, _ = process_carve_seeds(self.updated_non_seeds, bigg2seed, self.int_suffix)
 
-        with open(self.updated_seed_sets, "w") as f:
-            json.dump(updated_seeds_biggIds, f)
-        with open(self.updated_non_seed_sets, "w") as f:
-            json.dump(updated_non_seeds_biggIds, f)
+        bigg_seeds = os.path.join(self.seeds, "updatedBiggSeedsDic.json")
+        bigg_non_seeds = os.path.join(self.seeds, "updatedBiggNonSeedsDic.json")
 
+        with open(bigg_seeds, "w") as f:
+            json.dump(seeds_biggIds, f)
+        with open(bigg_non_seeds, "w") as f:
+            json.dump(non_seeds_biggIds, f)
+
+        self.updated_seeds = seeds_biggIds
+        self.updated_non_seeds = non_seeds_biggIds
 
 
 def process_carve_seeds(seeds_dict, bigg2seed, int_suffix):
@@ -312,7 +238,6 @@ def process_carve_seeds(seeds_dict, bigg2seed, int_suffix):
     updated_biggIds = {}
     bigg_ids_not_mapped_to_seed = {}
     for bin_id, seeds in seeds_dict.items():
-
         updated_biggIds[bin_id] = []
         for seed_id in seeds:
             # seed_id_part = "_".join(seed_id.split("_")[1:-1])
@@ -321,16 +246,14 @@ def process_carve_seeds(seeds_dict, bigg2seed, int_suffix):
                 bigg_ids_not_mapped_to_seed.setdefault(bin_id, []).append(seed_id)
                 continue
             updated_biggIds[bin_id].append(bigg2seed[seed_id])
-
         flat_list = [
-            "".join(["M_", item, int_suffix])
+            "_".join(["M", item, int_suffix])
             for sublist in updated_biggIds[bin_id]
             if sublist
             for item in sublist
             if not pd.isna(item)
         ]
         updated_biggIds[bin_id] = flat_list
-
     return updated_biggIds, bigg_ids_not_mapped_to_seed
 
 

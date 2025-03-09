@@ -3,43 +3,76 @@ from libsbml import readSBML
 import networkx as nx
 
 
+# # NOTE (2025-03-08):
+# # We remove any exchange reaction: 'thm_e <=> '
+# # cellular_reactions = [r for r in model.getListOfReactions() if not r.getId().startswith("R_EX_")]
+# cellular_reactions = []
+# for rxn in model.getListOfReactions():
+#     reactants = [i.getSpecies() for i in rxn.getListOfReactants()]
+#     products  = [j.getSpecies() for j in rxn.getListOfProducts()]
+#     boundary = False
+#     if (len(reactants) == 1 and len(products) == 0) or (len(products) == 1 and len(reactants) == 0):
+#         # r is an exchange reaction
+#         single_species = reactants if len(reactants) == 1 else products if len(products) == 1 else None
+#         species_id = single_species[0]  #.getSpecies()
+#         species = model.getSpecies(species_id)
+#         if species.getBoundaryCondition():  # Check if it's a boundary species
+#             boundary = True
+#     if not boundary:
+#         cellular_reactions.append(rxn)
+# # NOTE (2025-03-07):
+# # 1. get reaction and product and construct directed graph ignoring the exchange reactions
+# # 2. for the reversible reactions, keep both directions as source and target
+# print("Number of cellular: ", len(cellular_reactions))
+# # for rxn in cellular_reactions:
+
 def buildDG(sbml):
     '''
     Usage: reads SBML file, parses reaction and product list
     Returns: networkx directed graph
-    '''
 
+    ('M_glu__L_c', 'M_val__L_c')
+    ('M_val__L_c', 'M_glu__L_c')
+    '''
     # initate empty directed graph
     DG = nx.DiGraph()
-
     document = readSBML(sbml)
     model = document.getModel()
 
-    # # get reactions
-    # rxns = (model.getListOfReactions())
+    for rxn in model.getListOfReactions():
+        react_f = [i.getSpecies() for i in rxn.getListOfReactants()]
+        prod_f  = [j.getSpecies() for j in rxn.getListOfProducts()]
 
-    # get exchange reactions
-    cellular_reactions = [r for r in model.getListOfReactions() if not r.getId().startswith("R_EX_")]
-    exchange_reactions = [r for r in model.getListOfReactions() if r.getId().startswith("R_EX_")]
+        # NOTE (2025-03-08):
+        # If any non cellular compound is being used in the reaction, skip the reaction
+        # This will skip any exchange and periplasm-related reactions, but also reactions that use extracellular compounds in cytosol
+        not_cytosol = False
+        all_react_mets = react_f + prod_f
 
-    # get reaction and product and construct directed graph
-    # for rxn in rxns:
-    for rxn in cellular_reactions:
+        for met in all_react_mets:
+            if met.rsplit('_', 1)[-1] not in ["c", "c0"]:
+                # print("Skip reaction:", rxn)
+                not_cytosol = True
 
-        react = [i.getSpecies() for i in rxn.getListOfReactants()]
-        prod = [j.getSpecies() for j in rxn.getListOfProducts()]
-        for r in react:
-            for p in prod:
+        if not_cytosol:
+            continue
+
+        # Load directed edge on the DG graph
+        for r in react_f:
+            for p in prod_f:
                 DG.add_edge(r,p)
-
         # NOTE (2025-03-07): In case of reversible reactions, we consider that too
         if rxn.reversible:
-            react = [i.getSpecies() for i in rxn.getListOfProducts()]
-            prod = [j.getSpecies() for j in rxn.getListOfReactants()]
-            for r in react:
-                for p in prod:
+            react_r = prod_f
+            prod_r  = react_f
+            for r in react_r:
+                for p in prod_r:
                     DG.add_edge(r,p)
     return DG
+
+# carveme:     dg = buildDG(modelfile)
+# modelseedpy: mgt_dg  = buildDG(mgt_modelfile)
+
 
 def getSeedSet(DG, maxComponentSize = 5):
     '''
@@ -48,39 +81,35 @@ def getSeedSet(DG, maxComponentSize = 5):
     Implementation follows literature description,
     Improves upon NetCooperate module implementation which erroneously discards certian cases of SCCs (where a smaller potential SCC lies within a larger SCC)
     '''
-
     # get SCC
     SCC = nx.strongly_connected_components(DG)
-
     SeedSetConfidence = dict()
-
     for cc in SCC:
         # convert set to list
         cc_temp = list(cc)
-
         # filter out CC larger than threshold
         if len(cc_temp) > maxComponentSize:
             continue
-
         # check single element SCC
         elif len(cc_temp) == 1:
             if DG.in_degree(cc_temp[0]) == 0:
                 SeedSetConfidence[cc_temp[0]] = 1.0
-
         # check 2 to max threshold SCC
         else:
-            #check if no out nodes
+            # Check if no out nodes
             for node in cc_temp:
-                # check every edge of SCC
+                # Check every edge of SCC
                 for edge in DG.in_edges(node):
                     # if SCC is not self contained, then it is not considered seed set
                     if edge[0] not in cc_temp:
                         cc_temp = []
             for node in cc_temp:
                 SeedSetConfidence[node] = 1/len(cc_temp)
-
-    SeedSet = SeedSetConfidence.keys()
-
-    nonSeedSet = list(set(DG.nodes()) - set(SeedSet))
-
+    SeedSet = set(SeedSetConfidence.keys())
+    nonSeedSet = list(
+        set(DG.nodes()) - set(SeedSet)
+    )
     return(SeedSetConfidence, SeedSet, nonSeedSet)
+
+#  carveme:      ssc, ss, nss = getSeedSet(dg)
+#  modelseedpy:  patric_ssc, patric_ss, patric_nss = getSeedSet(mgt_dg)

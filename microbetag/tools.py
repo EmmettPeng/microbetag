@@ -181,7 +181,6 @@ def phenotrex_genotype(config):
     """
     Get COGs present in your genomes
     """
-
     if not os.path.exists(config.genotypes_file):
 
         logging.info("Get phenotrex predictions")
