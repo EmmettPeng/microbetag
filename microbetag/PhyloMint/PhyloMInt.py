@@ -11,9 +11,10 @@ from pathlib import Path
 # Libraries
 from libsbml import readSBML
 import multiprocessing
+from tqdm import tqdm
 
 # Local modules
-from lib import BuildGraphNetX, CalculateIndexes
+from .lib import BuildGraphNetX, CalculateIndexes
 
 __author__ = "Tony J. Lam"
 __credits__ = "Tony J. Lam, Moses Stamboulian, Wontack Han, Yuzhen Ye"
@@ -79,47 +80,79 @@ def runCarveMe(fna_path, outdir, FGS):
         print('faa_prefix')
         subprocess.run(['carve', f'{outdir}/tmp/FragGeneScan/{faa_prefix}.faa', '-o', f'{outdir}/tmp/CarveMe/{faa_prefix}.xml'])
 
-def directoryALL(dirr_path, outdir, outfile, save_dics, threads):
+def directoryALL(
+        dirr_path, outdir, outfile, save_dics, threads,
+        sets_only=False, skip_sets=False,
+        prev_conf=None, prev_nonseeds=None
+        ):
     '''
     Processess all SBML(XML) files in the directory path.
     Input: dirrectory path, outpath
     Output: file with competition and cooperation
     '''
 
-    # build initial dictionaries
-    SeedSetDic = dict()
-    nonSeedSetDic = dict()
-    ConfidenceDic = dict()
+    if not skip_sets:
 
-    # get all XML files in directory
-    print("Export seed and non seed sets....")
-    sbml_files = [ os.path.join(dirr_path, f) for f in os.listdir(dirr_path) if f.endswith('.xml') ]
-    reconstruction_filenames = [ f for f in os.listdir(dirr_path) if f.endswith('.xml') ]
-    total = len(sbml_files)
+        # build initial dictionaries
+        SeedSetDic = dict()
+        nonSeedSetDic = dict()
+        ConfidenceDic = dict()
 
-    num_threads = min(len(sbml_files), threads)
-    pool = multiprocessing.Pool(processes=num_threads)
-    results = pool.map(process_sbml, sbml_files)  # Map the function to the list of SBML files
+        # get all XML files in directory
+        print("Export seed and non seed sets....")
+        sbml_files = [ os.path.join(dirr_path, f) for f in os.listdir(dirr_path) if f.endswith('.xml') ]
+        reconstruction_filenames = [ f for f in os.listdir(dirr_path) if f.endswith('.xml') ]
+        total = len(sbml_files)
 
-    # Unpack the results
-    for result in results:
-        try:
-            sbml_base, SeedSet, nonSeedSet, SeedSetConfidence = result
-        except:
-            pass
+        num_threads = min(len(sbml_files), threads)
+        pool = multiprocessing.Pool(processes=num_threads)
 
-        # print("\n\n RESULT: \n",result)
-        tmp = {key: None for key in SeedSet}
-        SeedSetDic[sbml_base] = tmp.keys()
-        nonSeedSetDic[sbml_base] = nonSeedSet
-        ConfidenceDic[sbml_base] = SeedSetConfidence
+        with multiprocessing.Pool(processes=num_threads) as pool:
+            with tqdm(total=len(sbml_files), desc="Processing SBML files") as pbar:
+                results = []
+                for result in pool.imap_unordered(process_sbml, sbml_files):
+                    results.append(result)
+                    pbar.update(1)  # Update progress bar as soon as a task completes
 
-    pool.close()
-    pool.join()
+        # Unpack the results
+        for result in results:
+            try:
+                sbml_base, SeedSet, nonSeedSet, SeedSetConfidence = result
+            except:
+                pass
 
-    print("Seed and non seed sets have been exported.")
+            # print("\n\n RESULT: \n",result)
+            tmp = {key: None for key in SeedSet}
+            SeedSetDic[sbml_base] = tmp.keys()
+            nonSeedSetDic[sbml_base] = nonSeedSet
+            ConfidenceDic[sbml_base] = SeedSetConfidence
 
-    # calculate pairwise competition & cooperation index
+        pool.close()
+        pool.join()
+
+        print("Seed and non seed sets have been exported.")
+
+        if save_dics:
+            SeedSetDic_serializable = {k: list(v) for k, v in SeedSetDic.items()}
+            with open(f'{outdir}/SeedSetDic.json', 'w') as out_file:
+                json.dump(SeedSetDic_serializable, out_file)
+            with open(f'{outdir}/nonSeedSetDic.json', 'w') as out_file:
+                json.dump(nonSeedSetDic, out_file)
+            with open(f'{outdir}/confidenceDic.json', 'w') as out_file:
+                json.dump(ConfidenceDic, out_file)
+
+        if sets_only:
+            return
+
+    else:
+        with open(prev_conf, "r") as f:
+            ConfidenceDic = json.load(f)
+        with open(prev_nonseeds, "r") as f:
+            nonSeedSetDic = json.load(f)
+        total = len(ConfidenceDic)
+        reconstruction_filenames = [ x+".xml" for x in ConfidenceDic.keys()  ]
+
+    # Calculate pairwise competition & cooperation index
     count = 0
     pairwise_total = total*total
 
@@ -139,16 +172,13 @@ def directoryALL(dirr_path, outdir, outfile, save_dics, threads):
                 output = (f'{A}\t{B}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n')
                 out_file.write(output)
 
-    if save_dics:
-        SeedSetDic_serializable = {k: list(v) for k, v in SeedSetDic.items()}
-        with open(f'{outdir}/SeedSetDic.json', 'w') as out_file:
-            json.dump(SeedSetDic_serializable, out_file)
-        with open(f'{outdir}/nonSeedSetDic.json', 'w') as out_file:
-            json.dump(nonSeedSetDic, out_file)
-        with open(f'{outdir}/confidenceDic.json', 'w') as out_file:
-            json.dump(ConfidenceDic, out_file)
 
-def process_sbml(sbml_path):
+def process_sbml(sbml_path, maxcc=2):
+
+    try:
+        maxcc = args.maxcc
+    except:
+        pass
 
     filename = os.path.basename(sbml_path)
     sbml_base = filename.rstrip('.xml')
@@ -163,8 +193,9 @@ def process_sbml(sbml_path):
     # Get sets !
     # SeedSet: a dict_keys  |  nonSeedSet: a list already  |  SeedSetConfidence: a dict
     SeedSetConfidence, SeedSet, nonSeedSet = BuildGraphNetX.getSeedSet(
-        DG_sbml, maxComponentSize=args.maxcc
-        )
+        DG_sbml,
+        maxComponentSize=maxcc
+    )
 
     return sbml_base, list(SeedSet), nonSeedSet, SeedSetConfidence
 
@@ -184,8 +215,8 @@ if __name__ == '__main__' :
     parser.add_argument('-s', '--dics',  help = 'Save dictionaries with seed and non seed sets under outdir.', default = False)
     parser.add_argument('--maxcc', help = 'Maximum number of nodes in a strongly connected component (SCC) to consider in SeedSet. (default = 5)', default=5)
     parser.add_argument('--fraggenescan', help = 'path to FragGeneScan. (default: lib/FragGeneScan1.30/FragGeneScan)', default = f'{os.path.dirname(os.path.abspath(__file__))}/lib/FragGeneScan1.30/FragGeneScan')
-    parser.add_argument('--version', action='version',
-                    version='%(prog)s {version}'.format(version=__version__))
+    parser.add_argument('--version', action='version', version='%(prog)s {version}'.format(version=__version__))
+    parser.add_argument('-k', '--sets_only', help = 'Get only seed and non-seed sets, do not go for the indices calculation', default = False)
     if len(sys.argv)==1:
         parser.print_help()
         # parser.print_usage() # for just the usage line

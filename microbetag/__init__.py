@@ -16,6 +16,9 @@ from .seed_complementarity import (
 )
 from .build_mtg_cx2 import build_pseudo_cx, UpdateCX2Netork, build_ndex2_net
 
+
+from .PhyloMint.PhyloMInt import directoryALL
+
 import os
 _KEGG_MAPPINGS = os.path.join(os.path.dirname(__file__), "mtg_maps_models", "kegg_mappings")
 KEGG_TERMS_PER_MODULE = os.path.join(_KEGG_MAPPINGS, "kegg_terms_per_module.tsv")

@@ -18,46 +18,58 @@ def run_phylomint(config):
     Invoke PhyloMInt as edited from microbetag team to support parallel calculation of the seed and non seed sets
     and save corresponding sets to json files.
     """
-    if config.users_models:
-        genre_files = [
-            os.path.join(config.for_reconstructions, file)
-                for file in os.listdir(config.for_reconstructions)
-        ]
-        for file in genre_files:
-            dest_path = os.path.join(config.genres, os.path.basename(file))
-            try:
-                shutil.copy(file, dest_path)
-            except:
-                pass
-    else:
-        all_files = [
-            os.path.join(config.reconstructions, file)
-            for file in os.listdir(config.reconstructions)
-        ]
-        genre_files = [file for file in all_files if file.startswith(".xml")]
-        for file in genre_files:
-            dest_path = os.path.join(config.genres, os.path.basename(file))
-            shutil.move(file, dest_path)
 
-    PHYLOMINT = os.path.join(
-        os.path.dirname(__file__), "PhyloMint/PhyloMInt"
-    )
+    if config.skip_sets is False:
 
-    phylomint_params = [
-        PHYLOMINT,  # "./PhyloMint/PhyloMInt",
-        "-d", config.genres,
-        "--outdir", config.seeds,
-        "-o", "phylomint_scores.tsv",
-        "--dics", "True",
-        "--threads", str(config.threads)
-    ]
+        if config.users_models:
+            genre_files = [
+                os.path.join(config.for_reconstructions, file)
+                    for file in os.listdir(config.for_reconstructions)
+            ]
+            for file in genre_files:
+                dest_path = os.path.join(config.genres, os.path.basename(file))
+                try:
+                    shutil.copy(file, dest_path)
+                except:
+                    pass
+        else:
+            all_files = [
+                os.path.join(config.reconstructions, file)
+                for file in os.listdir(config.reconstructions)
+            ]
+            genre_files = [file for file in all_files if file.startswith(".xml")]
+            for file in genre_files:
+                dest_path = os.path.join(config.genres, os.path.basename(file))
+                shutil.move(file, dest_path)
 
-    phylomint_cmd = " ".join(phylomint_params)
-    print(phylomint_cmd)
-    try:
-        os.system(phylomint_cmd)
-    except:
-        logging.warning("Something wrong with running PhyloMint!")
+        # PHYLOMINT = os.path.join(
+        #     os.path.dirname(__file__), "PhyloMint/PhyloMInt"
+        # )
+
+
+    from .PhyloMint.PhyloMInt import directoryALL
+
+    directoryALL(config.genres, config.seeds, "phylomint_scores.tsv", True,
+            config.threads, config.sets_only,
+            config.skip_sets, config.prev_conf, config.prev_nonseeds)
+
+
+#    phylomint_params = [
+#        PHYLOMINT,  # "./PhyloMint/PhyloMInt",
+#        "-d", config.genres,
+#        "--outdir", config.seeds,
+#        "-o", "phylomint_scores.tsv",
+#        "--dics", "True",
+#        "--threads", str(config.threads),
+#        "--sets_only", str(config.sets_only)
+#    ]
+#
+#    phylomint_cmd = " ".join(phylomint_params)
+#    print(phylomint_cmd)
+#    try:
+#        os.system(phylomint_cmd)
+#    except:
+#        logging.warning("Something wrong with running PhyloMint!")
 
 
 def hmmsearch(params: List):
