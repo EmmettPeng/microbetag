@@ -87,7 +87,7 @@ class PhylomintMGT:
         self.module_seeds = os.path.join(self.outdir, "module_related_seeds.pckl")
 
         # If we are using
-        if config.users_models:
+        if config.users_models and self.skip_sets is False:
             if len(os.listdir(config.genres)) != len(os.listdir(config.for_reconstructions)):
                 genre_files = [
                 os.path.join(config.for_reconstructions, file)
@@ -276,6 +276,10 @@ class PhylomintMGT:
             partner = pair[1]
             if partner == species:
                 continue
+
+            species = species.replace(".PATRIC", "")
+            partner = partner.replace(".PATRIC", "")
+
             SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
             MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, B_complememts_to_A = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
             # Get only KEGG module - related

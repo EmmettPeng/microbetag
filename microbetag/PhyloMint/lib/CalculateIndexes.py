@@ -87,4 +87,4 @@ def microbetagPI(SeedSetAConfidence, SeedSetBConfidence, nonSeedB):
     # Get complementarities from B non-seeds to A's seeds
     complementerarities = SeedA.intersection(nonSeedB)
 
-    return MetabolicCooperationIdx, MetabolicCompetitionIdx, complementerarities
+    return round(MetabolicCooperationIdx, 2), round(MetabolicCompetitionIdx, 2), complementerarities
