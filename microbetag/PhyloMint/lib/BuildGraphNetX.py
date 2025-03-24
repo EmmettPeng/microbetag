@@ -5,26 +5,11 @@ import networkx as nx
 
 # # NOTE (2025-03-08):
 # # We remove any exchange reaction: 'thm_e <=> '
-# # cellular_reactions = [r for r in model.getListOfReactions() if not r.getId().startswith("R_EX_")]
-# cellular_reactions = []
-# for rxn in model.getListOfReactions():
-#     reactants = [i.getSpecies() for i in rxn.getListOfReactants()]
-#     products  = [j.getSpecies() for j in rxn.getListOfProducts()]
-#     boundary = False
-#     if (len(reactants) == 1 and len(products) == 0) or (len(products) == 1 and len(reactants) == 0):
-#         # r is an exchange reaction
-#         single_species = reactants if len(reactants) == 1 else products if len(products) == 1 else None
-#         species_id = single_species[0]  #.getSpecies()
-#         species = model.getSpecies(species_id)
-#         if species.getBoundaryCondition():  # Check if it's a boundary species
-#             boundary = True
-#     if not boundary:
-#         cellular_reactions.append(rxn)
+
 # # NOTE (2025-03-07):
 # # 1. get reaction and product and construct directed graph ignoring the exchange reactions
 # # 2. for the reversible reactions, keep both directions as source and target
-# print("Number of cellular: ", len(cellular_reactions))
-# # for rxn in cellular_reactions:
+
 
 def buildDG(sbml):
     '''
@@ -61,6 +46,7 @@ def buildDG(sbml):
         for r in react_f:
             for p in prod_f:
                 DG.add_edge(r,p)
+
         # NOTE (2025-03-07): In case of reversible reactions, we consider that too
         if rxn.reversible:
             react_r = prod_f

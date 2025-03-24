@@ -29,7 +29,7 @@ __email__ = "haris.zafeiropoulos@kuleuven.be"
 __status__ = "Development"
 
 
-class PhylomintMGT:
+class PhylomintMGT():
 
     def __init__(self, config):
 
@@ -56,20 +56,23 @@ class PhylomintMGT:
                 raise e
 
     def get_sets(self):
-        # build initial dictionaries
+
+        """
+        Get seed and non-seed sets for each model
+        """
+
+        # Build initial dictionaries
         SeedSetDic = dict()
         nonSeedSetDic = dict()
         ConfidenceDic = dict()
 
-        # get all XML files in directory
+        # Get all XML files in directory
         print("Export seed and non seed sets....")
+
         sbml_files = [ os.path.join(self.dir_path, f) for f in os.listdir(self.dir_path) if f.endswith('.xml') ]
-        # reconstruction_filenames = [ f for f in os.listdir(self.dir_path) if f.endswith('.xml') ]
-
         num_threads = min(len(sbml_files), self.threads)
-
         with multiprocessing.Pool(processes=num_threads) as pool:
-            with tqdm(total=len(sbml_files), desc="Processing SBML files") as pbar:
+            with tqdm(total=len(sbml_files), desc="Processing SBML files to calculate seed and non-seed sets.") as pbar:
                 results = []
                 for result in pool.imap_unordered(process_sbml, sbml_files):
                     results.append(result)
@@ -104,7 +107,10 @@ class PhylomintMGT:
 
 
     def get_scores(self):
-
+        """
+        Based on the seed and non-seed sets calculated, get all pairwise competition and cooperation scores and the seed complementarities
+        between the modles under study.
+        """
         total_species = self.ConfidenceDic.keys()
 
         lock = multiprocessing.Lock()
@@ -136,7 +142,9 @@ class PhylomintMGT:
 
 
     def scores_and_overlaps_for_a_species(self, species, lock):
-
+        """
+        Get scores and complements for a specific model (species)
+        """
         print(species)
 
         # Get pairs with species as A and species as B
@@ -176,27 +184,19 @@ class PhylomintMGT:
                 for r in findings:
                     f.write(r)
 
-
-
-
     def worker_function(self, lock, species, queue):
         """Wrapper function to process a species and signal completion."""
         self.scores_and_overlaps_for_a_species(species, lock)
         with lock:
             queue.put(1)  # Signal that one task is completed
 
+
 def progress_tracker(queue, total):
     """Progress bar updater."""
-    with tqdm(total=total, desc="Processing SBML files") as pbar:
+    with tqdm(total=total, desc="Calculate cooperation and competition scores as well as complementarities.") as pbar:
         for _ in range(total):
             queue.get()  # Wait for a task to finish
             pbar.update(1)
-
-
-
-
-
-
 
 def generate_fixed_pairwise_comparisons(fixed_item, reconstruction_filenames):
     """Generate and return two lists: one with the fixed item in the first position and one with it in the second."""

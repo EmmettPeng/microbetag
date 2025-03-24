@@ -1,26 +1,17 @@
 import os
 import json
-import time
-import cobra
 import shutil
 import pickle
 import logging
 import tarfile
+import multiprocessing
 import pandas as pd
 from tqdm import tqdm
 from joblib import Parallel, delayed
-from .utils import convert_to_json_serializable
 
+from .PhyloMint.lib import BuildGraphNetX
+from .PhyloMint.lib.CalculateIndexes import microbetagPI
 
-def process_sets(file_path, compound_prefix, ex_suffix, int_suffix):
-    with open(file_path) as f:
-        sets = json.load(f)
-    updated_sets = sets.copy()
-    for k, v in sets.items():
-        tmp_v = [x.split("_", 1)[-1] if x.split("_")[0] == compound_prefix else x for x in v]
-        new_v = [x.rsplit("_", 1)[0] if x.split("_")[-1] in [ex_suffix, int_suffix] else x for x in tmp_v]
-        updated_sets[k] = new_v
-    return updated_sets
 
 
 class ExportSeedComplementarities():
@@ -56,89 +47,10 @@ class ExportSeedComplementarities():
         # In case of carveme
         self.compound_prefix = "M"
 
-        if config.users_models:
-            if len(os.listdir(config.genres)) != len(os.listdir(config.for_reconstructions)):
-                genre_files = [
-                os.path.join(config.for_reconstructions, file)
-                        for file in os.listdir(config.for_reconstructions)
-                ]
-                for file in genre_files:
-                    dest_path = os.path.join(config.genres, os.path.basename(file))
-                    shutil.copy(file, dest_path)
-        self.updated_seeds     = process_sets(self.seed_sets, self.compound_prefix, self.ex_suffix, self.int_suffix)
-        self.updated_non_seeds = process_sets(self.non_seed_sets, self.compound_prefix, self.ex_suffix, self.int_suffix)
 
-    def module_related_seeds(self):
-        """
-        Get seed and non seed sets with terms related to KEGG MODULES.
-                                                       NonSeedSet
-        BIN
-        bin101-contigs  [cpd02817, cpd00344, cpd03123, cpd00482, cpd11...
-        """
-        modules_compounds = pd.read_csv(self.seed_ko_mo, sep="\t")
-        modules_compounds.columns = ["modelseed", "kegg", "module"]
-        modelseed_compounds_of_interest = set(modules_compounds["modelseed"].unique().tolist())
 
-        number_of_models = 0
-        patricId_to_seeds_of_interest = {}
-        patricId_to_non_seeds_of_interest = {}
-        mean_non_seedset_length = 0 ; mean_non_seedset_of_interest = 0
-        # non_seedset_file = json.load(open(self.non_seed_sets,"r"))
-        # model_names = list(non_seedset_file.keys())
-        model_names = list(self.updated_non_seeds.keys())
 
-        for smodel_name in model_names:
-            non_seedset = set( [x[2:] for x in self.updated_non_seeds[smodel_name]] )
-            non_seedset_no_compartments = set([
-                x[2:].rsplit("_", 1)[0]
-                for x in self.updated_non_seeds[smodel_name]
-            ])
-            non_seeds_of_interest = non_seedset_no_compartments.intersection(modelseed_compounds_of_interest)
-            mean_non_seedset_length += len(non_seedset)
-            patricId_to_non_seeds_of_interest[smodel_name] = non_seeds_of_interest
-            mean_non_seedset_of_interest += len(non_seeds_of_interest)
 
-        mean_seedset_length = 0
-        mean_seedset_of_interest = 0
-        # seedset_file = json.load(open(self.seed_sets, "r"))
-        # model_names = list(seedset_file.keys())
-        model_names = list(self.updated_seeds.keys())
-        for model_name in model_names:
-            number_of_models += 1
-            # Get seeds with and without their compartment specific part
-            seedset = set([x[2:]  for x in self.updated_seeds[model_name]])
-            seedset_no_compartments = set([
-                x[2:].rsplit("_", 1)[0]  for x in self.updated_seeds[model_name]
-            ])
-            mean_seedset_length += len(seedset)
-            seeds_of_interest = seedset_no_compartments.intersection(modelseed_compounds_of_interest)
-            seeds_of_interest_tmp = list(seeds_of_interest.copy())
-            for pot_seed in seeds_of_interest:
-                if pot_seed in patricId_to_non_seeds_of_interest[model_name]:
-                    seeds_of_interest_tmp.remove(pot_seed)
-            patricId_to_seeds_of_interest[model_name] = set(seeds_of_interest_tmp)
-            mean_seedset_of_interest += len(set(seeds_of_interest_tmp))
-
-        logging.info("Mean length of initial seedset: %s", str(mean_seedset_length/number_of_models))
-        logging.info("Mean length of seedsets of interest: %s", str(mean_seedset_of_interest/number_of_models))
-        logging.info("Mean of initial length of non seed sets: %s", str(mean_non_seedset_length/number_of_models))
-        logging.info("Mean of non seed sets of interest: %s", str(mean_non_seedset_of_interest/number_of_models))
-
-        tmp_dict = {key: list(value) for key, value in patricId_to_seeds_of_interest.items()}
-        df1 = pd.DataFrame(list(tmp_dict.items()), columns=['BIN', 'SeedSet'])
-        df1['BIN'] = df1['BIN'].str.replace('.BIN', '')
-        df1.set_index('BIN', inplace=True)
-
-        with open(self.module_seeds,"wb") as f:
-            pickle.dump(df1, f)
-
-        tmp_dict = {key: list(value) for key, value in patricId_to_non_seeds_of_interest.items()}
-        df2 = pd.DataFrame(list(tmp_dict.items()), columns=['BIN', 'NonSeedSet'])
-        df2['BIN'] = df2['BIN'].str.replace('.BIN', '')
-        df2.set_index('BIN', inplace=True)
-
-        with open( self.module_non_seeds,"wb") as f:
-            pickle.dump(df2, f)
 
     def export_seed_complements(self):
         """
@@ -188,73 +100,7 @@ class ExportSeedComplementarities():
 
         del results
 
-    def map_carveme_seeds(self):
-        """
-        https://www.metanetx.org/mnxdoc/mnxref.html
-        map to modelseed and/or kegg..
-        [REMEMBER] MGG points to modelseed ids
-        We will map
-        """
 
-        # Open the tar.gz file
-        with tarfile.open(self.metanetx_compounds, "r:gz") as tar:
-            # List files in the archive to identify the one you want to read
-            file_names = tar.getnames()  # Returns a list of files in the tar.gz
-            # Extract the file of interest as a file-like object
-            file_to_read = tar.extractfile(file_names[0])
-            if file_to_read:
-                metanetx = pd.read_csv(file_to_read, delimiter="\t", skiprows=353, header=None)  # Adjust delimiter as needed
-
-        metanetx.columns = ["source", "id", "description"]
-        metanetx[['source_namespace', 'source_id']] = metanetx['source'].str.split(pat=':', n=1, expand=True)
-        metanetx.drop(columns=['source'], inplace=True)
-        metanetx = metanetx[metanetx['source_namespace'].isin(["bigg.metabolite", "seed.compound"])]
-
-        metanetx_bigg_metabolite = metanetx[metanetx["source_namespace"] == "bigg.metabolite"]
-        metanetx_seed_compound = metanetx[metanetx["source_namespace"] == "seed.compound"]
-        merged_df = pd.merge(metanetx_bigg_metabolite, metanetx_seed_compound, on="id", how="left")
-        bigg2seed = merged_df.groupby("source_id_x")["source_id_y"].apply(list).to_dict()
-
-        seeds_biggIds, _     = process_carve_seeds(self.updated_seeds, bigg2seed, self.int_suffix)
-        non_seeds_biggIds, _ = process_carve_seeds(self.updated_non_seeds, bigg2seed, self.int_suffix)
-
-        bigg_seeds = os.path.join(self.seeds, "updatedBiggSeedsDic.json")
-        bigg_non_seeds = os.path.join(self.seeds, "updatedBiggNonSeedsDic.json")
-
-        with open(bigg_seeds, "w") as f:
-            json.dump(seeds_biggIds, f)
-        with open(bigg_non_seeds, "w") as f:
-            json.dump(non_seeds_biggIds, f)
-
-        self.updated_seeds = seeds_biggIds
-        self.updated_non_seeds = non_seeds_biggIds
-
-
-def process_carve_seeds(seeds_dict, bigg2seed, int_suffix):
-    """
-
-    bigg2seed (pd.DataFrame)
-    """
-    updated_biggIds = {}
-    bigg_ids_not_mapped_to_seed = {}
-    for bin_id, seeds in seeds_dict.items():
-        updated_biggIds[bin_id] = []
-        for seed_id in seeds:
-            # seed_id_part = "_".join(seed_id.split("_")[1:-1])
-            if seed_id not in bigg2seed:
-                logging.warning("not found: %s", seed_id)
-                bigg_ids_not_mapped_to_seed.setdefault(bin_id, []).append(seed_id)
-                continue
-            updated_biggIds[bin_id].append(bigg2seed[seed_id])
-        flat_list = [
-            "_".join(["M", item, int_suffix])
-            for sublist in updated_biggIds[bin_id]
-            if sublist
-            for item in sublist
-            if not pd.isna(item)
-        ]
-        updated_biggIds[bin_id] = flat_list
-    return updated_biggIds, bigg_ids_not_mapped_to_seed
 
 
 def load_seed_complement_files(path_to_kegg_seed_mappings):
@@ -327,4 +173,343 @@ def build_url_with_seed_complements(seed_complements, nonseeds, kmap, shortener=
         logging.info("Shortening the URL.")
         url =  shortener.tinyurl.short(url)
     return url
+
+
+
+
+class PhylomintMGT:
+
+    def __init__(self, config):
+
+        print("Initiating PhylomintMGT..")
+
+        self.dir_path  = config.genres
+        self.outdir    = config.seeds
+        self.outfile   = "phylomint_scores.tsv"
+        self.save_dics =  True
+        self.threads   = config.threads
+        self.sets_only = config.sets_only
+        self.skip_sets = config.skip_sets
+        self.prev_conf = config.prev_conf
+        self.prev_nonseeds = config.prev_nonseeds
+        self.genre_reconstruction_with = config.genre_reconstruction_with
+
+        if config.users_models:
+            if len(os.listdir(config.genres)) != len(os.listdir(config.for_reconstructions)):
+                genre_files = [
+                os.path.join(config.for_reconstructions, file)
+                        for file in os.listdir(config.for_reconstructions)
+                ]
+                for file in genre_files:
+                    dest_path = os.path.join(config.genres, os.path.basename(file))
+                    shutil.copy(file, dest_path)
+
+
+
+        if self.genre_reconstruction_with == "carveme":
+            print("Load bigg2seed map...")
+            # Open the tar.gz file
+            with tarfile.open(config.metanetx_compounds, "r:gz") as tar:
+                # List files in the archive to identify the one you want to read
+                file_names = tar.getnames()  # Returns a list of files in the tar.gz
+                # Extract the file of interest as a file-like object
+                file_to_read = tar.extractfile(file_names[0])
+                if file_to_read:
+                    metanetx = pd.read_csv(file_to_read, delimiter="\t", skiprows=353, header=None)  # Adjust delimiter as needed
+
+            metanetx.columns = ["source", "id", "description"]
+            metanetx[['source_namespace', 'source_id']] = metanetx['source'].str.split(pat=':', n=1, expand=True)
+            metanetx.drop(columns=['source'], inplace=True)
+            metanetx = metanetx[metanetx['source_namespace'].isin(["bigg.metabolite", "seed.compound"])]
+
+            metanetx_bigg_metabolite = metanetx[metanetx["source_namespace"] == "bigg.metabolite"]
+            metanetx_seed_compound = metanetx[metanetx["source_namespace"] == "seed.compound"]
+            merged_df = pd.merge(metanetx_bigg_metabolite, metanetx_seed_compound, on="id", how="left")
+            self.bigg2seed = merged_df.groupby("source_id_x")["source_id_y"].apply(list).to_dict()
+
+        print("Load KEGG MODULE related terms..")
+        self.seed_ko_mo = config.seed_ko_mo
+        modules_compounds = pd.read_csv(self.seed_ko_mo, sep="\t")
+        modules_compounds.columns = ["modelseed", "kegg", "module"]
+        self.modelseed_compounds_of_interest = set(modules_compounds["modelseed"].unique().tolist())
+
+        if self.skip_sets:
+            print("Load previously computed confidence scores and non-seed sets..")
+            try:
+                with open(self.prev_conf, "r") as f:
+                    self.ConfidenceDic = json.load(f)
+            except FileExistsError as e:
+                raise e
+            try:
+                with open(self.prev_nonseeds, "r") as f:
+                    self.nonSeedSetDic = json.load(f)
+            except FileExistsError as e:
+                raise e
+
+
+        self.ex_suffix = "e" if self.genre_reconstruction_with == "carveme" else "e0"
+        self.int_suffix = "c" if self.genre_reconstruction_with == "carveme" else "c0"
+        self.compound_prefix = "M"
+
+
+    def get_sets(self):
+
+        """
+        Get seed and non-seed sets for each model
+        """
+
+        # Build initial dictionaries
+        SeedSetDic = dict()
+        nonSeedSetDic = dict()
+        ConfidenceDic = dict()
+
+        # Get all XML files in directory
+        print("Export seed and non seed sets....")
+
+        sbml_files = [ os.path.join(self.dir_path, f) for f in os.listdir(self.dir_path) if f.endswith('.xml') ]
+        num_threads = min(len(sbml_files), self.threads)
+        with multiprocessing.Pool(processes=num_threads) as pool:
+            with tqdm(total=len(sbml_files), desc="Processing SBML files to calculate seed and non-seed sets.") as pbar:
+                results = []
+                for result in pool.imap_unordered(self.process_sbml, sbml_files):
+                    results.append(result)
+                    pbar.update(1)  # Update progress bar as soon as a task completes
+
+        # Unpack the results
+        for result in results:
+            try:
+                sbml_base, SeedSet, nonSeedSet, SeedSetConfidence = result
+            except:
+                pass
+
+            tmp = {key: None for key in SeedSet}
+            SeedSetDic[sbml_base] = tmp.keys()
+            nonSeedSetDic[sbml_base] = nonSeedSet
+            ConfidenceDic[sbml_base] = SeedSetConfidence
+
+        pool.close()
+        pool.join()
+
+        print("Seed and non seed sets have been exported.")
+
+        self.SeedSetDic, self.nonSeedSetDic, self.ConfidenceDic = SeedSetDic, nonSeedSetDic, ConfidenceDic
+
+        if self.save_dics:
+            SeedSetDic_serializable = {k: list(v) for k, v in SeedSetDic.items()}
+            with open(f'{self.outdir}/SeedSetDic.json', 'w') as out_file:
+                json.dump(SeedSetDic_serializable, out_file)
+            with open(f'{self.outdir}/nonSeedSetDic.json', 'w') as out_file:
+                json.dump(nonSeedSetDic, out_file)
+            with open(f'{self.outdir}/confidenceDic.json', 'w') as out_file:
+                json.dump(ConfidenceDic, out_file)
+
+
+    def get_scores(self):
+        """
+        Based on the seed and non-seed sets calculated, get all pairwise competition and cooperation scores and the seed complementarities
+        between the modles under study.
+        """
+        total_species = self.ConfidenceDic.keys()
+
+        lock = multiprocessing.Lock()
+        queue = multiprocessing.Queue()
+        processes = []
+
+        # Start a separate process for tracking progress
+        progress_process = multiprocessing.Process(target=progress_tracker, args=(queue, len(total_species)))
+        progress_process.start()
+
+        # Manually spawn processes with a limited number of concurrent threads
+        for i, species in enumerate(total_species):
+            if i % self.threads == 0:
+                for process in processes:
+                    process.join()  # Wait for the batch to finish
+                processes = []  # Clear completed processes
+
+            process = multiprocessing.Process(target=self.worker_function, args=(lock, species, queue))
+            processes.append(process)
+            process.start()
+
+        # Wait for the remaining processes to finish
+        for process in processes:
+            process.join()
+
+        # Signal the progress tracker to stop
+        queue.put(None)
+        progress_process.join()
+
+
+    def scores_and_overlaps_for_a_species(self, species, lock):
+        """
+        Get scores and complements for a specific model (species)
+        """
+        print(species)
+
+        # Get pairs with species as A and species as B
+        as_beneficiary, as_donor = generate_fixed_pairwise_comparisons(species, list(self.ConfidenceDic.keys()))
+
+        # Get species seed and non-seed sets
+        species_seedset, species_nonseed_set = self.ConfidenceDic[species], self.nonSeedSetDic[species]
+
+        findings = set()
+
+        # Species as A
+        for pair in as_beneficiary:
+            partner = pair[1]
+            SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
+            MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, intersectAB = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
+            # Get only KEGG module - related
+            updated_intersectAB = self.update_intersect(intersectAB)
+            # Line to print
+            output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\t{updated_intersectAB}\n"
+            findings.add(output)
+
+        # Safely write to the file with a lock
+        with lock:
+            with open(self.outfile, 'a') as f:
+                for r in findings:
+                    f.write(r)
+
+
+    def worker_function(self, lock, species, queue):
+        """Wrapper function to process a species and signal completion."""
+        self.scores_and_overlaps_for_a_species(species, lock)
+        with lock:
+            queue.put(1)  # Signal that one task is completed
+
+
+    def update_intersect(self, intersect):
+        """Check if KEGG MODULE related"""
+        intersect = list(intersect)
+        tmp_intersect = intersect.copy()
+        for compl in tmp_intersect:
+            if compl not in self.modelseed_compounds_of_interest:
+                intersect.remove(compl)
+        return intersect
+
+
+    def process_sbml(self, sbml_path, maxcc=2):
+
+        filename = os.path.basename(sbml_path)
+        sbml_base = filename.rstrip('.xml')
+
+        # calculate SeedSets
+        try:
+            DG_sbml = BuildGraphNetX.buildDG(sbml_path)
+        except:
+            print("Failed to run PhyloMint for:", sbml_path)
+            return
+
+        # Get sets !
+        # SeedSet: a dict_keys  |  nonSeedSet: a list already  |  SeedSetConfidence: a dict
+        SeedSetConfidence, SeedSet, nonSeedSet = BuildGraphNetX.getSeedSet(
+            DG_sbml,
+            maxComponentSize=maxcc
+        )
+
+        # Remove any prefixes-suffixes
+        SeedSetConfidence, SeedSet, nonSeedSet = (
+            self._strip_pre_suff_from_dict(SeedSetConfidence),
+            self._strip_pre_suff_from_list(SeedSet),
+            self._strip_pre_suff_from_list(nonSeedSet)
+        )
+
+        # If carveme, map compounds to modelseed
+        if self.genre_reconstruction_with == "carveme":
+
+            seedSetBigg = SeedSet.copy()
+            nonSeedSetBigg = nonSeedSet.copy()
+            SeedSetConfidenceBigg = SeedSetConfidence.copy()
+
+            SeedSet           = _bigg_to_modelseed(seedSetBigg, self.bigg2seed)
+            nonSeedSet        = _bigg_to_modelseed(nonSeedSetBigg, self.bigg2seed)
+            SeedSetConfidence = _bigg_to_modelseed(SeedSetConfidenceBigg, self.bigg2seed)
+
+        return sbml_base, list(SeedSet), nonSeedSet, SeedSetConfidence
+
+
+    def _strip_pre_suff_from_list(self, terms):
+        return [
+            term.split("_", 1)[-1] if term.startswith(self.compound_prefix) else term
+            for term in (t.rsplit("_", 1)[0] if t.split("_")[-1] in {self.ex_suffix, self.int_suffix} else t for t in terms)
+        ]
+
+    def _strip_pre_suff_from_dict(self, d):
+        d_tmp = {}
+        for k,v in d.items():
+            new_k = self._strip_pre_suff_from_list([k])[0]
+            d_tmp[new_k] = v
+        return d_tmp
+
+
+def _bigg_to_modelseed(bigg_obj, bigg2seed):
+    """
+    bigg2seed (pd.DataFrame)
+    """
+    if isinstance(bigg_obj, list):
+        modelseed_seed_list = []
+        for seed_BiggId in bigg_obj:
+            if seed_BiggId not in bigg2seed:
+                print("not found: %s", seed_BiggId)  # This should be almost impossible..
+                continue
+            else:
+                # NOTE (Haris Zafeiropoulos, 2025-03-24):
+                # The bigg2seed dictionary has lists for values; if more than 1 modelseed compounds hit to the same BiGG
+                # we keep the one with the lowest cpd since it's probably more involved to key processes
+                mapped_ids = bigg2seed[seed_BiggId]
+                mapped_ids = [x for x in mapped_ids if not isinstance(x, float)]
+                if len(mapped_ids) > 0:
+                    modelseed_ids = sorted(mapped_ids)
+                    modelseed_seed_list.append(modelseed_ids[0])
+                else:
+                    print("not found: %s", seed_BiggId)
+                    modelseed_seed_list.append(seed_BiggId)
+        return modelseed_seed_list
+
+    elif isinstance(bigg_obj, dict):
+        modelseed_seed_dict = {}
+        for seed_BiggId, value in bigg_obj.items():
+            if seed_BiggId not in bigg2seed:
+                logging.warning("not found in dictionary case: %s", seed_BiggId)
+            else:
+                mapped_ids = bigg2seed[seed_BiggId]
+                mapped_ids = [x for x in mapped_ids if not isinstance(x, float)]
+                if len(mapped_ids) > 0:
+                    modelseed_ids = sorted(mapped_ids)
+                    modelseed_seed_dict[modelseed_ids[0]] = value
+                else:
+                    print("not found in dictionary case: %s", seed_BiggId)
+                    modelseed_seed_dict[seed_BiggId] = value
+        return modelseed_seed_dict
+
+
+
+def progress_tracker(queue, total):
+    """Progress bar updater."""
+    with tqdm(total=total, desc="Calculate cooperation and competition scores as well as complementarities.") as pbar:
+        for _ in range(total):
+            queue.get()  # Wait for a task to finish
+            pbar.update(1)
+
+def generate_fixed_pairwise_comparisons(fixed_item, reconstruction_filenames):
+    """Generate and return two lists: one with the fixed item in the first position and one with it in the second."""
+
+    fixed_seedset_as_A = set()
+    fixed_nonseedset_as_A = set()
+
+    # Generate pairs where fixed_item is in the first position
+    for B in reconstruction_filenames:
+        fixed_seedset_as_A.add((fixed_item, B))
+
+    # Generate pairs where fixed_item is in the second position
+    for A in reconstruction_filenames:
+        fixed_nonseedset_as_A.add((A, fixed_item))
+
+    return list(fixed_seedset_as_A), list(fixed_nonseedset_as_A)
+
+
+
+
+
+
 

@@ -84,4 +84,6 @@ def microbetagPI(SeedSetAConfidence, SeedSetBConfidence, nonSeedB):
     # calculate normalized weighted sum
     MetabolicCooperationIdx = (len(intersect_seedA_nonseedB)/len(intersect_seedA_setB))
 
+    # intersectAB = {x.split("_", 1)[-1].rsplit("_", 1)[0] for x in intersectAB}
+
     return MetabolicCooperationIdx, MetabolicCompetitionIdx, intersectAB

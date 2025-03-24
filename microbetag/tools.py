@@ -10,14 +10,16 @@ from .utils import (
     get_files_with_suffixes, get_library_version, get_tool_location,
     ensure_flashweave_format, ensure_same_namespace_after_fw
 )
-
-
+# from .PhyloMint.PhyloMInt import PhylomintMGT
+from .seed_complementarity import PhylomintMGT
 
 def run_phylomint(config):
     """
     Invoke PhyloMInt as edited from microbetag team to support parallel calculation of the seed and non seed sets
     and save corresponding sets to json files.
     """
+
+    phylomint = PhylomintMGT(config)
 
     if config.skip_sets is False:
 
@@ -42,16 +44,8 @@ def run_phylomint(config):
                 dest_path = os.path.join(config.genres, os.path.basename(file))
                 shutil.move(file, dest_path)
 
-        # PHYLOMINT = os.path.join(
-        #     os.path.dirname(__file__), "PhyloMint/PhyloMInt"
-        # )
+        phylomint.get_sets()
 
-
-    from .PhyloMint.PhyloMInt import PhylomintMGT
-    # PhylomintMGT(config.genres, config.seeds, "phylomint_scores.tsv", True,
-    #         config.threads, config.sets_only,
-    #         config.skip_sets, config.prev_conf, config.prev_nonseeds)
-    phylomint = PhylomintMGT(config)
     phylomint.get_scores()
 
 

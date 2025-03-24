@@ -101,7 +101,7 @@ class MappingPaths:
     """
     Sets paths to mapping files
     """
-    def __init__(self, config):
+    def __init__(self):
         mtg = os.path.dirname(__file__)
         kegg_mappings = os.path.join(mtg, "mtg_maps_models/kegg_mappings/")
         self.kegg_mappings = kegg_mappings
