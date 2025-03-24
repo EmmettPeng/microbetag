@@ -2,12 +2,13 @@ import os
 import json
 import shutil
 import pickle
+import h5py
 import logging
 import tarfile
 import multiprocessing
 import pandas as pd
 from tqdm import tqdm
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 
 from .PhyloMint.lib import BuildGraphNetX
 from .PhyloMint.lib.CalculateIndexes import microbetagPI
@@ -64,116 +65,6 @@ class ExportSeedComplementarities():
         bin151-contigs  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...                                                 []  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...
         bin19-contigs   [cpd01777, cpd00055, cpd00121, cpd00482, cpd00...  [cpd01777, cpd00055, cpd00121, cpd00338, cpd00...                                                 []  [cpd00145, cpd21480, cpd01777, cpd02160, cpd00...
         """
-        # Function to calculate overlap
-        def calculate_overlap(seed_set, non_seed_set):
-            return list(set(seed_set) & set(non_seed_set))
-
-        # Parallelized function to calculate overlap for one row in df1 with all rows in df2
-        def calculate_overlap_parallel(row1, df2):
-            return [calculate_overlap(row1['SeedSet'], row2['NonSeedSet']) for _, row2 in df2.iterrows()]
-
-        # Load my case
-        with open(self.module_seeds, "rb") as f:
-            df1 = pickle.load(f)
-        with open(self.module_non_seeds, "rb") as f:
-            df2 = pickle.load(f)
-
-        # Create a new DataFrame for overlaps
-        overlaps_df = pd.DataFrame(index=df1.index, columns=df2.index)
-
-        # Parallelize the overlap calculation using joblib with tqdm for progress tracking
-        num_cores = -1  # Use all available cores
-
-        results = Parallel(n_jobs=num_cores)(
-            delayed(calculate_overlap_parallel)(row1, df2)
-            for _, row1 in tqdm(df1.iterrows(),
-                                total=len(df1)
-                                )
-            )
-
-        # Fill in the overlaps DataFrame with calculated values
-        for i, row in enumerate(results):
-            overlaps_df.iloc[i] = row
-
-        with open(self.seed_complements,"wb") as f:
-            pickle.dump(overlaps_df, f)
-
-        del results
-
-
-
-
-def load_seed_complement_files(path_to_kegg_seed_mappings):
-    """
-
-    """
-    kmap = pd.read_csv(os.path.join(path_to_kegg_seed_mappings, "seedId_keggId_module.tsv"), sep="\t", header=None)
-    kmap.columns = ["modelseed", "kegg_compound", "kegg_module"]
-
-    module_to_map = pd.read_csv(os.path.join(path_to_kegg_seed_mappings, "module_map_pairs.tsv"), sep="\t", header=None)
-    module_to_map.columns = ["module", "map"]
-    module_to_map['module'] = module_to_map['module'].str.replace("md:", '')
-    module_to_map['map'] = module_to_map["map"].str.strip()
-
-    module_map_dict = module_to_map.set_index('module')['map'].to_dict()
-    kmap['map'] = kmap['kegg_module'].map(module_map_dict)
-
-    maps_categories_and_descrs = pd.read_csv(os.path.join(path_to_kegg_seed_mappings, "related_kegg_maps_descriptions.tsv"), sep="\t", header=None)
-    maps_categories_and_descrs.columns = ["map", "description", "category"]
-
-    kmap = pd.merge(kmap, maps_categories_and_descrs, on='map', how='left')
-
-    return kmap
-
-
-def order_seed_complements(r):
-    """
-    Order seed complements so they display based on their metabolism category
-    which have been ranked according to what metabolic interactions we believe most common.
-    """
-    # Define a custom sorting function
-    def custom_sort(item):
-        return category_index.get(item[0], len(order_list))
-
-    # Create a dictionary to map each category to its corresponding index in the order_list
-    order_list = [
-        'Amino acid metabolism',
-        'Metabolism of cofactors and vitamins',
-        'Energy metabolism',
-        'Carbohydrate metabolism',
-        'Nucleotide metabolism',
-        'Biosynthesis of other secondary metabolites',
-        'Biosynthesis of terpenoids and polyketides',
-        'Lipid metabolism',
-        'Glycan metabolism',
-        'Xenobiotics biodegradation'
-    ]
-    category_index = {category: index for index, category in enumerate(order_list)}
-
-    # Sort the data using the custom sorting function
-    sorted_data = sorted(r, key=custom_sort)
-    return sorted_data
-
-
-def build_url_with_seed_complements(seed_complements, nonseeds, kmap, shortener=None):
-    """
-
-    """
-    base_url = "https://www.kegg.jp/kegg-bin/show_pathway?"
-    url = "".join([base_url, kmap]) + "/"
-
-    present_compounds_color = "%20skyblue%2Cblue/"
-    complemet_compounds_color = "%09%23ff0000/"
-
-    for compound in nonseeds:
-        url += compound + present_compounds_color
-    for compound in seed_complements:
-        url += compound + complemet_compounds_color
-    if shortener is not None:
-        logging.info("Shortening the URL.")
-        url =  shortener.tinyurl.short(url)
-    return url
-
 
 
 
@@ -185,7 +76,7 @@ class PhylomintMGT:
 
         self.dir_path  = config.genres
         self.outdir    = config.seeds
-        self.outfile   = "phylomint_scores.tsv"
+        self.outfile   = os.path.join(self.outdir, "phylomint_scores.tsv")
         self.save_dics =  True
         self.threads   = config.threads
         self.sets_only = config.sets_only
@@ -193,7 +84,9 @@ class PhylomintMGT:
         self.prev_conf = config.prev_conf
         self.prev_nonseeds = config.prev_nonseeds
         self.genre_reconstruction_with = config.genre_reconstruction_with
+        self.module_seeds = os.path.join(self.outdir, "module_related_seeds.pckl")
 
+        # If we are using
         if config.users_models:
             if len(os.listdir(config.genres)) != len(os.listdir(config.for_reconstructions)):
                 genre_files = [
@@ -204,8 +97,7 @@ class PhylomintMGT:
                     dest_path = os.path.join(config.genres, os.path.basename(file))
                     shutil.copy(file, dest_path)
 
-
-
+       #
         if self.genre_reconstruction_with == "carveme":
             print("Load bigg2seed map...")
             # Open the tar.gz file
@@ -309,11 +201,18 @@ class PhylomintMGT:
         Based on the seed and non-seed sets calculated, get all pairwise competition and cooperation scores and the seed complementarities
         between the modles under study.
         """
+        # TODO (Haris Zafeiropoulos, 2025-03-24):
+        # what if I do have the scores and i only need the complements... (funny but you never know)
+
         total_species = self.ConfidenceDic.keys()
 
         lock = multiprocessing.Lock()
         queue = multiprocessing.Queue()
         processes = []
+
+        # for shared dict ----------------------------
+        manager = multiprocessing.Manager()
+        shared_dict = manager.dict()  # Shared dictionary for DataFrame
 
         # Start a separate process for tracking progress
         progress_process = multiprocessing.Process(target=progress_tracker, args=(queue, len(total_species)))
@@ -326,7 +225,7 @@ class PhylomintMGT:
                     process.join()  # Wait for the batch to finish
                 processes = []  # Clear completed processes
 
-            process = multiprocessing.Process(target=self.worker_function, args=(lock, species, queue))
+            process = multiprocessing.Process(target=self.worker_function, args=(lock, species, queue, shared_dict))
             processes.append(process)
             process.start()
 
@@ -338,30 +237,52 @@ class PhylomintMGT:
         queue.put(None)
         progress_process.join()
 
+        # Ensure inner dictionaries are not lost
+        shared_dict_serializable = {k: dict(v) for k, v in shared_dict.items()}
 
-    def scores_and_overlaps_for_a_species(self, species, lock):
+        with open("asd.json", "w") as f:
+            json.dump(shared_dict_serializable, f)  # Pretty print for readability
+
+        df = pd.DataFrame.from_dict(shared_dict_serializable)
+        with open("asd.pckl", "wb") as f:
+            pickle.dump(df, f)
+
+        """
+        import pandas as pd
+        # Load only rows where "Source" is "GPB:bin_000082"
+        df_partial = pd.read_hdf("module_related_seeds.h5", key="seeds", where='Source == "GPB:bin_000082"')
+
+        print(df_partial)
+        """
+
+
+
+    def scores_and_overlaps_for_a_species(self, species, lock, shared_dict):
         """
         Get scores and complements for a specific model (species)
         """
         print(species)
 
         # Get pairs with species as A and species as B
-        as_beneficiary, as_donor = generate_fixed_pairwise_comparisons(species, list(self.ConfidenceDic.keys()))
+        as_beneficiary, _ = generate_fixed_pairwise_comparisons(species, list(self.ConfidenceDic.keys()))
 
         # Get species seed and non-seed sets
-        species_seedset, species_nonseed_set = self.ConfidenceDic[species], self.nonSeedSetDic[species]
-
-        findings = set()
+        species_seedset = self.ConfidenceDic[species]
 
         # Species as A
+        compls = {}
+        findings = set()
         for pair in as_beneficiary:
             partner = pair[1]
+            if partner == species:
+                continue
             SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
-            MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, intersectAB = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
+            MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, B_complememts_to_A = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
             # Get only KEGG module - related
-            updated_intersectAB = self.update_intersect(intersectAB)
+            kegg_module_related_B_complememts_to_A = self.kegg_module_related_intersect(B_complememts_to_A)
             # Line to print
-            output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\t{updated_intersectAB}\n"
+            output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
+            compls[partner] = kegg_module_related_B_complememts_to_A
             findings.add(output)
 
         # Safely write to the file with a lock
@@ -369,16 +290,18 @@ class PhylomintMGT:
             with open(self.outfile, 'a') as f:
                 for r in findings:
                     f.write(r)
+            # Load KEGG related complements to shared dict
+            shared_dict[species] = compls
 
 
-    def worker_function(self, lock, species, queue):
+    def worker_function(self, lock, species, queue, shared_dict):
         """Wrapper function to process a species and signal completion."""
-        self.scores_and_overlaps_for_a_species(species, lock)
+        self.scores_and_overlaps_for_a_species(species, lock, shared_dict)
         with lock:
             queue.put(1)  # Signal that one task is completed
 
 
-    def update_intersect(self, intersect):
+    def kegg_module_related_intersect(self, intersect):
         """Check if KEGG MODULE related"""
         intersect = list(intersect)
         tmp_intersect = intersect.copy()
@@ -491,6 +414,7 @@ def progress_tracker(queue, total):
             queue.get()  # Wait for a task to finish
             pbar.update(1)
 
+
 def generate_fixed_pairwise_comparisons(fixed_item, reconstruction_filenames):
     """Generate and return two lists: one with the fixed item in the first position and one with it in the second."""
 
@@ -509,7 +433,74 @@ def generate_fixed_pairwise_comparisons(fixed_item, reconstruction_filenames):
 
 
 
+def load_seed_complement_files(path_to_kegg_seed_mappings):
+    """
+
+    """
+    kmap = pd.read_csv(os.path.join(path_to_kegg_seed_mappings, "seedId_keggId_module.tsv"), sep="\t", header=None)
+    kmap.columns = ["modelseed", "kegg_compound", "kegg_module"]
+
+    module_to_map = pd.read_csv(os.path.join(path_to_kegg_seed_mappings, "module_map_pairs.tsv"), sep="\t", header=None)
+    module_to_map.columns = ["module", "map"]
+    module_to_map['module'] = module_to_map['module'].str.replace("md:", '')
+    module_to_map['map'] = module_to_map["map"].str.strip()
+
+    module_map_dict = module_to_map.set_index('module')['map'].to_dict()
+    kmap['map'] = kmap['kegg_module'].map(module_map_dict)
+
+    maps_categories_and_descrs = pd.read_csv(os.path.join(path_to_kegg_seed_mappings, "related_kegg_maps_descriptions.tsv"), sep="\t", header=None)
+    maps_categories_and_descrs.columns = ["map", "description", "category"]
+
+    kmap = pd.merge(kmap, maps_categories_and_descrs, on='map', how='left')
+
+    return kmap
 
 
+def order_seed_complements(r):
+    """
+    Order seed complements so they display based on their metabolism category
+    which have been ranked according to what metabolic interactions we believe most common.
+    """
+    # Define a custom sorting function
+    def custom_sort(item):
+        return category_index.get(item[0], len(order_list))
 
+    # Create a dictionary to map each category to its corresponding index in the order_list
+    order_list = [
+        'Amino acid metabolism',
+        'Metabolism of cofactors and vitamins',
+        'Energy metabolism',
+        'Carbohydrate metabolism',
+        'Nucleotide metabolism',
+        'Biosynthesis of other secondary metabolites',
+        'Biosynthesis of terpenoids and polyketides',
+        'Lipid metabolism',
+        'Glycan metabolism',
+        'Xenobiotics biodegradation'
+    ]
+    category_index = {category: index for index, category in enumerate(order_list)}
+
+    # Sort the data using the custom sorting function
+    sorted_data = sorted(r, key=custom_sort)
+    return sorted_data
+
+
+def build_url_with_seed_complements(seed_complements, nonseeds, kmap, shortener=None):
+    """
+
+    """
+    base_url = "https://www.kegg.jp/kegg-bin/show_pathway?"
+    url = "".join([base_url, kmap]) + "/"
+
+    present_compounds_color = "%20skyblue%2Cblue/"
+    complemet_compounds_color = "%09%23ff0000/"
+
+    for compound in nonseeds:
+        url += compound + present_compounds_color
+    for compound in seed_complements:
+        url += compound + complemet_compounds_color
+    if shortener is not None:
+        logging.info("Shortening the URL.")
+        url =  shortener.tinyurl.short(url)
+    return url
 
