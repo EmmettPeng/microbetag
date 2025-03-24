@@ -47,29 +47,15 @@ def run_phylomint(config):
         # )
 
 
-    from .PhyloMint.PhyloMInt import directoryALL
+    from .PhyloMint.PhyloMInt import PhylomintMGT
+    # PhylomintMGT(config.genres, config.seeds, "phylomint_scores.tsv", True,
+    #         config.threads, config.sets_only,
+    #         config.skip_sets, config.prev_conf, config.prev_nonseeds)
+    phylomint = PhylomintMGT(config)
+    phylomint.get_scores()
 
-    directoryALL(config.genres, config.seeds, "phylomint_scores.tsv", True,
-            config.threads, config.sets_only,
-            config.skip_sets, config.prev_conf, config.prev_nonseeds)
 
 
-#    phylomint_params = [
-#        PHYLOMINT,  # "./PhyloMint/PhyloMInt",
-#        "-d", config.genres,
-#        "--outdir", config.seeds,
-#        "-o", "phylomint_scores.tsv",
-#        "--dics", "True",
-#        "--threads", str(config.threads),
-#        "--sets_only", str(config.sets_only)
-#    ]
-#
-#    phylomint_cmd = " ".join(phylomint_params)
-#    print(phylomint_cmd)
-#    try:
-#        os.system(phylomint_cmd)
-#    except:
-#        logging.warning("Something wrong with running PhyloMint!")
 
 
 def hmmsearch(params: List):

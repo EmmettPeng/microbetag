@@ -4,7 +4,11 @@
 import sys
 import os
 import json
+import itertools
+import functools
 import subprocess
+from multiprocessing import Manager
+from multiprocessing import Process
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -14,85 +18,44 @@ import multiprocessing
 from tqdm import tqdm
 
 # Local modules
-from .lib import BuildGraphNetX, CalculateIndexes
+from .lib import BuildGraphNetX
+from .lib.CalculateIndexes import microbetagPI
 
-__author__ = "Tony J. Lam"
+__author__ = "Haris Zafeiropoulos"
 __credits__ = "Tony J. Lam, Moses Stamboulian, Wontack Han, Yuzhen Ye"
-__version__ = "0.1.0"
-__maintainer__ = "Tony J. Lam"
-__email__ = "tjlam@indiana.edu"
+__version__ = "0.1.1"
+__maintainer__ = "Haris Zafeiropoulos"
+__email__ = "haris.zafeiropoulos@kuleuven.be"
 __status__ = "Development"
 
 
-def singleFile(infile1, infile2):
-    '''
-    Processes competition and cooperation index if two sbml files are provided
-    Input: SBML A and B
-    Returns: tabulated competition and cooperation index
-    '''
+class PhylomintMGT:
 
-    A = os.path.basename(infile1).rstrip('.xml')
-    B = os.path.basename(infile2).rstrip('.xml')
+    def __init__(self, config):
 
-    DG_A=BuildGraphNetX.buildDG(args.infile1)
-    DG_B=BuildGraphNetX.buildDG(args.infile2)
+        self.dir_path  = config.genres
+        self.outdir    = config.seeds
+        self.outfile   = "phylomint_scores.tsv"
+        self.save_dics =  True
+        self.threads   = config.threads
+        self.sets_only = config.sets_only
+        self.skip_sets = config.skip_sets
+        self.prev_conf = config.prev_conf
+        self.prev_nonseeds = config.prev_nonseeds
 
-    # Calculate the seed sets
-    SeedSetAConfidence, SeedSetA, nonSeedSetA = BuildGraphNetX.getSeedSet(DG_A, maxComponentSize=args.maxcc)
-    SeedSetBConfidence, SeedSetB, nonSeedSetB = BuildGraphNetX.getSeedSet(DG_B, maxComponentSize=args.maxcc)
+        if self.skip_sets:
+            try:
+                with open(self.prev_conf, "r") as f:
+                    self.ConfidenceDic = json.load(f)
+            except FileExistsError as e:
+                raise e
+            try:
+                with open(self.prev_nonseeds, "r") as f:
+                    self.nonSeedSetDic = json.load(f)
+            except FileExistsError as e:
+                raise e
 
-    # Get Comeptition
-    MetabolicCompetitionIdxAB = CalculateIndexes.MetabolicCompetitionIdx(SeedSetAConfidence, SeedSetBConfidence)
-    MetabolicCooperationIdxAB = CalculateIndexes.MetabolicCooperationIdx(SeedSetAConfidence, SeedSetBConfidence, nonSeedSetB)
-
-    return (f'{A}\t{B}\tCompetition:{MetabolicCompetitionIdxAB}\tCooperation:{MetabolicCooperationIdxAB}')
-
-def runCarveMe(fna_path, outdir, FGS):
-    '''
-    Takes input directory of genomes, predicts CDS, runs CarveMe
-    Input: directory path to genomes
-    Output: directory path to SBML files
-    '''
-
-    # make temporary file for FGS
-    Path(f'{outdir}/tmp/FragGeneScan/').mkdir(parents=True, exist_ok=True)
-
-    # acceptable suffixes
-    my_suffixes = ('fna','fa','fq','fastq')
-
-    # run FGS
-    fna_files = [f for f in os.listdir(fna_path) if f.endswith(my_suffixes)]
-
-    print('FragGeneScan: Predicting CDS from genome sequences')
-    for fna in fna_files:
-        #run FGS
-        fna_prefix = os.path.splitext(os.path.basename(fna))[0]
-        subprocess.run([FGS, '-s', f'{fna_path}/{fna}', '-o', f'{outdir}/tmp/FragGeneScan/{fna_prefix}', '-w', '1', '-t', 'complete',])
-
-    # make dir for CarveMe output
-    Path(f'{outdir}/tmp/CarveMe/').mkdir(parents=True, exist_ok=True)
-
-    # run CarveMe
-    print('CarveMe: Predicting GENRE')
-    for faa in fna_files:
-        #carve ${file}/${f}.faa -o ${OUTDIR}/${f}.xml
-        faa_prefix = os.path.splitext(os.path.basename(faa))[0]
-        print('faa_prefix')
-        subprocess.run(['carve', f'{outdir}/tmp/FragGeneScan/{faa_prefix}.faa', '-o', f'{outdir}/tmp/CarveMe/{faa_prefix}.xml'])
-
-def directoryALL(
-        dirr_path, outdir, outfile, save_dics, threads,
-        sets_only=False, skip_sets=False,
-        prev_conf=None, prev_nonseeds=None
-        ):
-    '''
-    Processess all SBML(XML) files in the directory path.
-    Input: dirrectory path, outpath
-    Output: file with competition and cooperation
-    '''
-
-    if not skip_sets:
-
+    def get_sets(self):
         # build initial dictionaries
         SeedSetDic = dict()
         nonSeedSetDic = dict()
@@ -100,12 +63,10 @@ def directoryALL(
 
         # get all XML files in directory
         print("Export seed and non seed sets....")
-        sbml_files = [ os.path.join(dirr_path, f) for f in os.listdir(dirr_path) if f.endswith('.xml') ]
-        reconstruction_filenames = [ f for f in os.listdir(dirr_path) if f.endswith('.xml') ]
-        total = len(sbml_files)
+        sbml_files = [ os.path.join(self.dir_path, f) for f in os.listdir(self.dir_path) if f.endswith('.xml') ]
+        # reconstruction_filenames = [ f for f in os.listdir(self.dir_path) if f.endswith('.xml') ]
 
-        num_threads = min(len(sbml_files), threads)
-        pool = multiprocessing.Pool(processes=num_threads)
+        num_threads = min(len(sbml_files), self.threads)
 
         with multiprocessing.Pool(processes=num_threads) as pool:
             with tqdm(total=len(sbml_files), desc="Processing SBML files") as pbar:
@@ -120,8 +81,6 @@ def directoryALL(
                 sbml_base, SeedSet, nonSeedSet, SeedSetConfidence = result
             except:
                 pass
-
-            # print("\n\n RESULT: \n",result)
             tmp = {key: None for key in SeedSet}
             SeedSetDic[sbml_base] = tmp.keys()
             nonSeedSetDic[sbml_base] = nonSeedSet
@@ -132,53 +91,131 @@ def directoryALL(
 
         print("Seed and non seed sets have been exported.")
 
-        if save_dics:
+        self.SeedSetDic, self.nonSeedSetDic, self.ConfidenceDic = SeedSetDic, nonSeedSetDic, ConfidenceDic
+
+        if self.save_dics:
             SeedSetDic_serializable = {k: list(v) for k, v in SeedSetDic.items()}
-            with open(f'{outdir}/SeedSetDic.json', 'w') as out_file:
+            with open(f'{self.outdir}/SeedSetDic.json', 'w') as out_file:
                 json.dump(SeedSetDic_serializable, out_file)
-            with open(f'{outdir}/nonSeedSetDic.json', 'w') as out_file:
+            with open(f'{self.outdir}/nonSeedSetDic.json', 'w') as out_file:
                 json.dump(nonSeedSetDic, out_file)
-            with open(f'{outdir}/confidenceDic.json', 'w') as out_file:
+            with open(f'{self.outdir}/confidenceDic.json', 'w') as out_file:
                 json.dump(ConfidenceDic, out_file)
 
-        if sets_only:
-            return
 
-    else:
-        with open(prev_conf, "r") as f:
-            ConfidenceDic = json.load(f)
-        with open(prev_nonseeds, "r") as f:
-            nonSeedSetDic = json.load(f)
-        total = len(ConfidenceDic)
-        reconstruction_filenames = [ x+".xml" for x in ConfidenceDic.keys()  ]
+    def get_scores(self):
 
-    # Calculate pairwise competition & cooperation index
-    count = 0
-    pairwise_total = total*total
+        total_species = self.ConfidenceDic.keys()
 
-    with open(f'{outdir}/{outfile}', 'w') as out_file:
-        out_file.write(f'\tA\tB\tCompetition\tComplementarity\n')
-        for A in reconstruction_filenames:
-            for B in reconstruction_filenames:
+        lock = multiprocessing.Lock()
+        queue = multiprocessing.Queue()
+        processes = []
 
-                A = A.rstrip('.xml')
-                B = B.rstrip('.xml')
+        # Start a separate process for tracking progress
+        progress_process = multiprocessing.Process(target=progress_tracker, args=(queue, len(total_species)))
+        progress_process.start()
 
-                count += 1
-                print(f'Calculating Indexes: {A} vs {B} - {count}/{pairwise_total}')
-                MetabolicCompetitionIdxAB = CalculateIndexes.MetabolicCompetitionIdx(ConfidenceDic[A], ConfidenceDic[B])
-                MetabolicCooperationIdxAB = CalculateIndexes.MetabolicCooperationIdx(ConfidenceDic[A], ConfidenceDic[B], nonSeedSetDic[B])
+        # Manually spawn processes with a limited number of concurrent threads
+        for i, species in enumerate(total_species):
+            if i % self.threads == 0:
+                for process in processes:
+                    process.join()  # Wait for the batch to finish
+                processes = []  # Clear completed processes
 
-                output = (f'{A}\t{B}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n')
-                out_file.write(output)
+            process = multiprocessing.Process(target=self.worker_function, args=(lock, species, queue))
+            processes.append(process)
+            process.start()
+
+        # Wait for the remaining processes to finish
+        for process in processes:
+            process.join()
+
+        # Signal the progress tracker to stop
+        queue.put(None)
+        progress_process.join()
+
+
+    def scores_and_overlaps_for_a_species(self, species, lock):
+
+        print(species)
+
+        # Get pairs with species as A and species as B
+        as_beneficiary, as_donor = generate_fixed_pairwise_comparisons(species, list(self.ConfidenceDic.keys()))
+
+        # Get species seed and non-seed sets
+        species_seedset, species_nonseed_set = self.ConfidenceDic[species], self.nonSeedSetDic[species]
+
+        findings = set()
+
+        # Species as A
+        for pair in as_beneficiary:
+            partner = pair[1]
+            SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
+            MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, intersectAB = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
+            output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
+            findings.add(output)
+
+        # Safely write to the file with a lock
+        with lock:
+            with open(self.outfile, 'a') as f:
+                for r in findings:
+                    f.write(r)
+
+        findings = set()
+        # Species as B
+        for pair in as_donor:
+            partner = pair[0]
+            SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
+            MetabolicCooperationIdxBA, MetabolicCompetitionIdxBA, intersectBA = microbetagPI(SeedSetBConfidence, species_seedset, species_nonseed_set)
+            output = f"{partner}\t{species}\t{MetabolicCompetitionIdxBA}\t{MetabolicCooperationIdxBA}\n"
+            findings.add(output)
+
+        # Safely write to the file with a lock
+        with lock:
+            with open(self.outfile, 'a') as f:
+                for r in findings:
+                    f.write(r)
+
+
+
+
+    def worker_function(self, lock, species, queue):
+        """Wrapper function to process a species and signal completion."""
+        self.scores_and_overlaps_for_a_species(species, lock)
+        with lock:
+            queue.put(1)  # Signal that one task is completed
+
+def progress_tracker(queue, total):
+    """Progress bar updater."""
+    with tqdm(total=total, desc="Processing SBML files") as pbar:
+        for _ in range(total):
+            queue.get()  # Wait for a task to finish
+            pbar.update(1)
+
+
+
+
+
+
+
+def generate_fixed_pairwise_comparisons(fixed_item, reconstruction_filenames):
+    """Generate and return two lists: one with the fixed item in the first position and one with it in the second."""
+
+    fixed_seedset_as_A = set()
+    fixed_nonseedset_as_A = set()
+
+    # Generate pairs where fixed_item is in the first position
+    for B in reconstruction_filenames:
+        fixed_seedset_as_A.add((fixed_item, B))
+
+    # Generate pairs where fixed_item is in the second position
+    for A in reconstruction_filenames:
+        fixed_nonseedset_as_A.add((A, fixed_item))
+
+    return list(fixed_seedset_as_A), list(fixed_nonseedset_as_A)
 
 
 def process_sbml(sbml_path, maxcc=2):
-
-    try:
-        maxcc = args.maxcc
-    except:
-        pass
 
     filename = os.path.basename(sbml_path)
     sbml_base = filename.rstrip('.xml')
@@ -203,52 +240,5 @@ def process_sbml(sbml_path, maxcc=2):
 
 
 
-if __name__ == '__main__' :
-    parser = ArgumentParser(description = 'PhyloMInt: Takes input genomes or genome scale metabolic models in SBML format. Calculates metabolic complementarity and cooperation indexes. Outputs to output file, tsv format.')
-    parser.add_argument('-i', '--infile1', help = 'Input SBML file (XML format) organism A.')
-    parser.add_argument('-j', '--infile2', help = 'Input SBML file (XML format) organism B.')
-    parser.add_argument('-c', '--carveme', help = '(Optional) Path to fasta files. Will run FragGeneScan, predict genes to be used as CarveMe output.', default=None)
-    parser.add_argument('-d', '--dirr', help = '(Optional) Path to directory with SBML files. Will compute all pairwise comparisons & use dynamic programming for computational speed-up.', default=None)
-    parser.add_argument('-o', '--outfile', help = 'Output tsv file name.')
-    parser.add_argument('-t', '--threads', help='Number of CPUs to be used', default=1)
-    parser.add_argument('--outdir', help = 'Outdir path. default = cwd', default = os.getcwd())
-    parser.add_argument('-s', '--dics',  help = 'Save dictionaries with seed and non seed sets under outdir.', default = False)
-    parser.add_argument('--maxcc', help = 'Maximum number of nodes in a strongly connected component (SCC) to consider in SeedSet. (default = 5)', default=5)
-    parser.add_argument('--fraggenescan', help = 'path to FragGeneScan. (default: lib/FragGeneScan1.30/FragGeneScan)', default = f'{os.path.dirname(os.path.abspath(__file__))}/lib/FragGeneScan1.30/FragGeneScan')
-    parser.add_argument('--version', action='version', version='%(prog)s {version}'.format(version=__version__))
-    parser.add_argument('-k', '--sets_only', help = 'Get only seed and non-seed sets, do not go for the indices calculation', default = False)
-    if len(sys.argv)==1:
-        parser.print_help()
-        # parser.print_usage() # for just the usage line
-        parser.exit()
-    args = parser.parse_args()
-
-
-    # if dirr not used
-    if args.dirr == None and args.carveme == None:
-
-        # get indexes
-        output = singleFile(args.infile1, args.infile2)
-
-        # print output
-        print(output)
-
-        ## write to outfile
-        #with open(f'{args.outdir}/{args.outfile}', 'a+') as outfile:
-        #    outfile.write(output)
-
-    # raise exception, only allow start from Carveme or SBML.
-    elif args.dirr != None and args.carveme != None:
-        raise ValueError('Error: Both CarveMe and SBML files have been selected. Please choose to execute starting from genome files (CarveMe), or SBML files.')
-
-    # run pipeline starting with SBML files in path
-    elif args.dirr != None and args.carveme == None:
-        # process all files in directory path
-        directoryALL(args.dirr, args.outdir, args.outfile, args.dics, int(args.threads))
-
-    # start pipeline with genome files
-    elif args.dirr == None and args.carveme != None:
-        runCarveMe(args.carveme, args.outdir, args.fraggenescan)
-        directoryALL(f'{args.outdir}/tmp/CarveMe', args.outdir, args.outfile, args.dics, int(args.threads))
 
 

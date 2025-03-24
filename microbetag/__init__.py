@@ -17,24 +17,10 @@ from .seed_complementarity import (
 from .build_mtg_cx2 import build_pseudo_cx, UpdateCX2Netork, build_ndex2_net
 
 
-from .PhyloMint.PhyloMInt import directoryALL
+from .PhyloMint.PhyloMInt import PhylomintMGT
 
 import os
 _KEGG_MAPPINGS = os.path.join(os.path.dirname(__file__), "mtg_maps_models", "kegg_mappings")
 KEGG_TERMS_PER_MODULE = os.path.join(_KEGG_MAPPINGS, "kegg_terms_per_module.tsv")
 MODULE_DEFINITION_MAP = os.path.join(_KEGG_MAPPINGS, "module_definition_map.json")
 KEGG_MODULES_TO_MAPS = os.path.join( _KEGG_MAPPINGS, "module_map_pairs.tsv")
-
-
-
-#from .config import *
-#from .helpers import *
-#from .utils import *
-#from .tools import *
-#from .networks import *
-#from .genres import *
-#from .build_mtg_cx2 import *
-#from .pathway_complementarity import *
-#from .seed_complementarity import *
-#
-
