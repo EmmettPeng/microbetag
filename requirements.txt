@@ -19,6 +19,7 @@ python-libsbml==5.20.2
 # We will install 1.2.0 since phenotrex hase an independent conda env
 scikit-learn==1.2.0
 
+tqdm==4.66.4
 
 # GAPSEQ
 # r-base=4.0.*

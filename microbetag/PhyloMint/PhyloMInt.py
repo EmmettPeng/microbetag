@@ -152,7 +152,7 @@ class PhylomintMGT:
             partner = pair[1]
             SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
             MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, intersectAB = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
-            output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
+            output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\t{intersectAB}\n"
             findings.add(output)
 
         # Safely write to the file with a lock
@@ -167,7 +167,7 @@ class PhylomintMGT:
             partner = pair[0]
             SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
             MetabolicCooperationIdxBA, MetabolicCompetitionIdxBA, intersectBA = microbetagPI(SeedSetBConfidence, species_seedset, species_nonseed_set)
-            output = f"{partner}\t{species}\t{MetabolicCompetitionIdxBA}\t{MetabolicCooperationIdxBA}\n"
+            output = f"{partner}\t{species}\t{MetabolicCompetitionIdxBA}\t{MetabolicCooperationIdxBA}\t{intersectBA}\n"
             findings.add(output)
 
         # Safely write to the file with a lock
