@@ -14,9 +14,30 @@ import multiprocessing
 from .PhyloMint.lib import BuildGraphNetX
 from .PhyloMint.lib.CalculateIndexes import microbetagPI
 
+# self.seed_sets = os.path.join(config.seeds, "SeedSetDic.json")
+# self.non_seed_sets = os.path.join(config.seeds, "nonSeedSetDic.json")
+
+# self.seed_ko_mo = config.seed_ko_mo
+# self.module_seeds = os.path.join(self.seeds, "module_related_seeds.pckl")
+# self.module_non_seeds = os.path.join(self.seeds, "module_related_non_seeds.pckl")
+# self.seed_complements = os.path.join(self.seeds, "seed_complements.pckl")
+
+"""
+Export pairwise seed complmenents.
+Returns a df where beneficiary species are in the rows and potential donors in the columns.
+
+example:
+BIN                                             bin101-contigs                                     bin151-contigs                                      bin19-contigs                                     bin189-contigs
+BIN
+bin101-contigs                                                 []  [cpd02678, cpd00094, cpd02893, cpd00641, cpd00...  [cpd00259, cpd02678, cpd00641, cpd00200, cpd00...  [cpd02678, cpd00641, cpd00200, cpd00142, cpd00...
+bin151-contigs  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...                                                 []  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...
+bin19-contigs   [cpd01777, cpd00055, cpd00121, cpd00482, cpd00...  [cpd01777, cpd00055, cpd00121, cpd00338, cpd00...                                                 []  [cpd00145, cpd21480, cpd01777, cpd02160, cpd00...
+"""
 
 
-class ExportSeedComplementarities():
+
+class PhylomintMGT:
+
     """
     Class to  export seed complements.
     Needs a config object to initiate it.
@@ -24,7 +45,6 @@ class ExportSeedComplementarities():
     # conda activate microbetag
     import yaml
     from config import Config
-    from utils import ExportSeedComplementarities
 
     config_file = "tests/dev_io_microbetag/config.yml"
     with open(config_file, 'r') as yaml_file:
@@ -32,42 +52,6 @@ class ExportSeedComplementarities():
 
     seed_complements = ExportSeedComplementarities(config)
     """
-    def __init__(self, config):
-        self.seeds = config.seeds
-        self.seed_sets = os.path.join(config.seeds, "SeedSetDic.json")
-        self.non_seed_sets = os.path.join(config.seeds, "nonSeedSetDic.json")
-        self.genres = config.genres
-        self.logfile = os.path.join(config.seeds, "log.tsv")
-        self.seed_ko_mo = config.seed_ko_mo
-        self.module_seeds = os.path.join(self.seeds, "module_related_seeds.pckl")
-        self.module_non_seeds = os.path.join(self.seeds, "module_related_non_seeds.pckl")
-        self.seed_complements = os.path.join(self.seeds, "seed_complements.pckl")
-        self.metanetx_compounds = config.metanetx_compounds
-        self.genre_reconstruction_with = config.genre_reconstruction_with
-        self.ex_suffix = "e" if self.genre_reconstruction_with == "carveme" else "e0"
-        self.int_suffix = "c" if self.genre_reconstruction_with == "carveme" else "c0"
-        # In case of carveme
-        self.compound_prefix = "M"
-
-
-
-
-    def export_seed_complements(self):
-        """
-        Export pairwise seed complmenents.
-        Returns a df where beneficiary species are in the rows and potential donors in the columns.
-
-        example:
-        BIN                                             bin101-contigs                                     bin151-contigs                                      bin19-contigs                                     bin189-contigs
-        BIN
-        bin101-contigs                                                 []  [cpd02678, cpd00094, cpd02893, cpd00641, cpd00...  [cpd00259, cpd02678, cpd00641, cpd00200, cpd00...  [cpd02678, cpd00641, cpd00200, cpd00142, cpd00...
-        bin151-contigs  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...                                                 []  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...  [cpd03049, cpd00239, cpd03831, cpd11466, cpd00...
-        bin19-contigs   [cpd01777, cpd00055, cpd00121, cpd00482, cpd00...  [cpd01777, cpd00055, cpd00121, cpd00338, cpd00...                                                 []  [cpd00145, cpd21480, cpd01777, cpd02160, cpd00...
-        """
-
-
-
-class PhylomintMGT:
 
     def __init__(self, config):
 
@@ -84,7 +68,7 @@ class PhylomintMGT:
         self.prev_nonseeds             = config.prev_nonseeds
         self.genre_reconstruction_with = config.genre_reconstruction_with
 
-        self.perce_save          = 2
+        self.perce_save          = 10
         self.seed_complements_js = os.path.join(self.outdir, "seed_complements.json")
         self.seed_complements = os.path.join(self.outdir, "seed_complements.pckl")
         self.module_seeds     = os.path.join(self.outdir, "module_related_seeds.pckl")
@@ -124,6 +108,11 @@ class PhylomintMGT:
             merged_df = pd.merge(metanetx_bigg_metabolite, metanetx_seed_compound, on="id", how="left")
             self.bigg2seed = merged_df.groupby("source_id_x")["source_id_y"].apply(list).to_dict()
 
+        # Prefixes - suffixes
+        self.ex_suffix = "e" if self.genre_reconstruction_with == "carveme" else "e0"
+        self.int_suffix = "c" if self.genre_reconstruction_with == "carveme" else "c0"
+        self.compound_prefix = "M"
+
         print("Load KEGG MODULE related terms..")
         self.seed_ko_mo = config.seed_ko_mo
         modules_compounds = pd.read_csv(self.seed_ko_mo, sep="\t")
@@ -134,18 +123,20 @@ class PhylomintMGT:
             print("Load previously computed confidence scores and non-seed sets..")
             try:
                 with open(self.prev_conf, "r") as f:
-                    self.ConfidenceDic = json.load(f)
+                    ConfidenceDic = json.load(f)
             except FileExistsError as e:
                 raise e
             try:
                 with open(self.prev_nonseeds, "r") as f:
-                    self.nonSeedSetDic = json.load(f)
+                    nonSeedSetDic = json.load(f)
             except FileExistsError as e:
                 raise e
 
-        self.ex_suffix = "e" if self.genre_reconstruction_with == "carveme" else "e0"
-        self.int_suffix = "c" if self.genre_reconstruction_with == "carveme" else "c0"
-        self.compound_prefix = "M"
+            self.ConfidenceDic, self.nonSeedSetDic = {}, {}
+            for k, v in ConfidenceDic.items():
+                self.ConfidenceDic[k] = self._strip_pre_suff_from_dict(v)
+            for k,v in nonSeedSetDic.items():
+                self.nonSeedSetDic[k] = self._strip_pre_suff_from_list(v)
 
 
     def get_sets(self):
@@ -219,6 +210,7 @@ class PhylomintMGT:
         progress_process.start()
 
         # Manually spawn processes with a limited number of concurrent threads
+        counter = 1
         for i, species in enumerate(total_species):
             if i % self.threads == 0:
                 for process in processes:
@@ -234,8 +226,9 @@ class PhylomintMGT:
                 print(f"Progress {i}/{len(total_species)} - Shared dict state: {len(dict(shared_dict))}", file=sys.stderr)
                 tmp_json = shared_dict.copy()
                 tmp_dict_serializable = {k: dict(v) for k, v in tmp_json.items()}
-                with open("tmp_cmpls.json", "w") as j:
+                with open(f"tmp_cmpls_{counter}.json", "w") as j:
                     json.dump(tmp_dict_serializable, j)
+                counter += 1
 
         # Wait for the remaining processes to finish
         for process in processes:
@@ -257,9 +250,9 @@ class PhylomintMGT:
         """
         Get scores and complements for a specific model (species)
         """
-        print(species)
 
         # Get pairs with species as A and species as B
+        print(species)
         as_beneficiary, _ = generate_fixed_pairwise_comparisons(species, list(self.ConfidenceDic.keys()))
 
         # Get species seed and non-seed sets
@@ -276,25 +269,25 @@ class PhylomintMGT:
             SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
             MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, B_complememts_to_A = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
 
-            # Get only KEGG module - related
-            kegg_module_related_B_complememts_to_A = self.kegg_module_related_intersect(B_complememts_to_A)
-
             # Line to print
             species = species.replace(".PATRIC", "")
             partner = partner.replace(".PATRIC", "")
 
             output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
-            compls[partner] = kegg_module_related_B_complememts_to_A
             findings.add(output)
 
-        # Load KEGG related complements to shared dict
-        shared_dict[species] = compls
+            # Get only KEGG module - related
+            B_complememts_to_A = self.kegg_module_related_intersect(B_complememts_to_A)
+            compls[partner] = B_complememts_to_A
+
+        # Update shared dict with KEGG related complements
+        with lock:
+            shared_dict[species] = dict(compls)
 
         # Safely write to the file with a lock
-        with lock:
-            with open(self.scores_outfile, 'a') as f:
-                for r in findings:
-                    f.write(r)
+        with open(self.scores_outfile, 'a') as f:
+            for r in findings:
+                f.write(r)
 
     def worker_function(self, lock, species, queue, shared_dict):
         """Wrapper function to process a species and signal completion."""
@@ -366,7 +359,6 @@ class PhylomintMGT:
             new_k = self._strip_pre_suff_from_list([k])[0]
             d_tmp[new_k] = v
         return d_tmp
-
 
     def monitor_shared_dict(self, shared_dict):
         while True:

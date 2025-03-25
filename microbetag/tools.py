@@ -213,7 +213,7 @@ def phenotrex_genotype(config):
             if os.system(compute_genotype_command) != 0:
                 logging.info("Try phenotrex genotype for the second time.")
                 if os.system(compute_genotype_command) != 0:
-                    logging.error("asda")
+                    logging.error("Phenotrex compute genotype command failed.")
                     sys.exit(0)
         # Local case
         else:
