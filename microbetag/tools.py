@@ -46,7 +46,7 @@ def run_phylomint(config):
 
         phylomint.get_sets()
 
-    phylomint.get_scores()
+    phylomint.get_scores_and_compls()
 
 
 def hmmsearch(params: List):

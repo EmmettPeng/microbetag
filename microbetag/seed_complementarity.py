@@ -1,14 +1,15 @@
 import os
+import sys
 import json
+import time
 import shutil
 import pickle
-import h5py
 import logging
 import tarfile
-import multiprocessing
 import pandas as pd
+
 from tqdm import tqdm
-# from joblib import Parallel, delayed
+import multiprocessing
 
 from .PhyloMint.lib import BuildGraphNetX
 from .PhyloMint.lib.CalculateIndexes import microbetagPI
@@ -74,7 +75,7 @@ class PhylomintMGT:
 
         self.dir_path  = config.genres
         self.outdir    = config.seeds
-        self.outfile   = os.path.join(self.outdir, "phylomint_scores.tsv")
+        self.scores_outfile   = os.path.join(self.outdir, "phylomint_scores.tsv")
         self.save_dics =  True
         self.threads   = config.threads
         self.sets_only = config.sets_only
@@ -83,6 +84,7 @@ class PhylomintMGT:
         self.prev_nonseeds             = config.prev_nonseeds
         self.genre_reconstruction_with = config.genre_reconstruction_with
 
+        self.perce_save          = 2
         self.seed_complements_js = os.path.join(self.outdir, "seed_complements.json")
         self.seed_complements = os.path.join(self.outdir, "seed_complements.pckl")
         self.module_seeds     = os.path.join(self.outdir, "module_related_seeds.pckl")
@@ -196,13 +198,11 @@ class PhylomintMGT:
                 json.dump(ConfidenceDic, out_file)
 
 
-    def get_scores(self):
+    def get_scores_and_compls(self):
         """
         Based on the seed and non-seed sets calculated, get all pairwise competition and cooperation scores and the seed complementarities
         between the modles under study.
         """
-        # TODO (Haris Zafeiropoulos, 2025-03-24):
-        # what if I do have the scores and i only need the complements... (funny but you never know)
 
         total_species = self.ConfidenceDic.keys()
 
@@ -210,7 +210,7 @@ class PhylomintMGT:
         queue = multiprocessing.Queue()
         processes = []
 
-        # for shared dict ----------------------------
+        # For shared dict
         manager = multiprocessing.Manager()
         shared_dict = manager.dict()  # Shared dictionary for DataFrame
 
@@ -229,6 +229,14 @@ class PhylomintMGT:
             processes.append(process)
             process.start()
 
+            # Save temporary compls per 1%, 2% etc.
+            if i % (len(total_species) // self.perce_save) == 0 and i != 0:
+                print(f"Progress {i}/{len(total_species)} - Shared dict state: {len(dict(shared_dict))}", file=sys.stderr)
+                tmp_json = shared_dict.copy()
+                tmp_dict_serializable = {k: dict(v) for k, v in tmp_json.items()}
+                with open("tmp_cmpls.json", "w") as j:
+                    json.dump(tmp_dict_serializable, j)
+
         # Wait for the remaining processes to finish
         for process in processes:
             process.join()
@@ -240,13 +248,10 @@ class PhylomintMGT:
         # Ensure inner dictionaries are not lost
         shared_dict_serializable = {k: dict(v) for k, v in shared_dict.items()}
 
-        # with open(self.seed_complements_js, "w") as f:
-        #     json.dump(shared_dict_serializable, f)  # Pretty print for readability
-
+        # Make df from dictionary and save it
         df = pd.DataFrame.from_dict(shared_dict_serializable)
         with open(self.seed_complements, "wb") as f:
             pickle.dump(df, f)
-
 
     def scores_and_overlaps_for_a_species(self, species, lock, shared_dict):
         """
@@ -282,24 +287,20 @@ class PhylomintMGT:
             compls[partner] = kegg_module_related_B_complememts_to_A
             findings.add(output)
 
-
         # Load KEGG related complements to shared dict
         shared_dict[species] = compls
 
         # Safely write to the file with a lock
         with lock:
-            with open(self.outfile, 'a') as f:
+            with open(self.scores_outfile, 'a') as f:
                 for r in findings:
                     f.write(r)
-
-
 
     def worker_function(self, lock, species, queue, shared_dict):
         """Wrapper function to process a species and signal completion."""
         self.scores_and_overlaps_for_a_species(species, lock, shared_dict)
         with lock:
             queue.put(1)  # Signal that one task is completed
-
 
     def kegg_module_related_intersect(self, intersect):
         """Check if KEGG MODULE related"""
@@ -310,9 +311,12 @@ class PhylomintMGT:
                 intersect.remove(compl)
         return intersect
 
-
     def process_sbml(self, sbml_path, maxcc=2):
-
+        """
+        For each SBML model file (.xml) extract seeds, non-seeds and confidence scores
+        using the PhyloMint adapted/refined approach of ours, i.e. building a directed graph
+        with only the cytosol reactions, considering for the reversibility of a reaction.
+        """
         filename = os.path.basename(sbml_path)
         sbml_base = filename.rstrip('.xml')
 
@@ -350,7 +354,6 @@ class PhylomintMGT:
 
         return sbml_base, list(SeedSet), nonSeedSet, SeedSetConfidence
 
-
     def _strip_pre_suff_from_list(self, terms):
         return [
             term.split("_", 1)[-1] if term.startswith(self.compound_prefix) else term
@@ -363,6 +366,17 @@ class PhylomintMGT:
             new_k = self._strip_pre_suff_from_list([k])[0]
             d_tmp[new_k] = v
         return d_tmp
+
+
+    def monitor_shared_dict(self, shared_dict):
+        while True:
+            time.sleep(60)  # Adjust frequency as needed
+            print("Current state of shared_dict:", len(dict(shared_dict)))  # Convert to dict for safe printing
+            if getattr(self.monitor_shared_dict, "stop", False):
+                break
+
+
+
 
 
 def _bigg_to_modelseed(bigg_obj, bigg2seed):
