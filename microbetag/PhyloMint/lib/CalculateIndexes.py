@@ -85,6 +85,9 @@ def microbetagPI(SeedSetAConfidence, SeedSetBConfidence, nonSeedB):
     MetabolicCooperationIdx = (len(intersect_seedA_nonseedB)/len(intersect_seedA_setB))
 
     # Get complementarities from B non-seeds to A's seeds
+    # TODO (Haris Zafeiropoulos, 2025-03-25):
+    # move it on its own maybe ? the lock does not seem to work fine both with writing the phylomint scores files
+    # and updating a shared dict ..
     complementerarities = SeedA.intersection(nonSeedB)
 
     return round(MetabolicCooperationIdx, 2), round(MetabolicCompetitionIdx, 2), complementerarities

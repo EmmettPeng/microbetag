@@ -10,7 +10,7 @@ from .utils import (
     get_files_with_suffixes, get_library_version, get_tool_location,
     ensure_flashweave_format, ensure_same_namespace_after_fw
 )
-# from .PhyloMint.PhyloMInt import PhylomintMGT
+
 from .seed_complementarity import PhylomintMGT
 
 def run_phylomint(config):
@@ -47,9 +47,6 @@ def run_phylomint(config):
         phylomint.get_sets()
 
     phylomint.get_scores()
-
-
-
 
 
 def hmmsearch(params: List):

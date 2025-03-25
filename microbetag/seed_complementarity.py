@@ -51,8 +51,6 @@ class ExportSeedComplementarities():
 
 
 
-
-
     def export_seed_complements(self):
         """
         Export pairwise seed complmenents.
@@ -82,9 +80,12 @@ class PhylomintMGT:
         self.sets_only = config.sets_only
         self.skip_sets = config.skip_sets
         self.prev_conf = config.prev_conf
-        self.prev_nonseeds = config.prev_nonseeds
+        self.prev_nonseeds             = config.prev_nonseeds
         self.genre_reconstruction_with = config.genre_reconstruction_with
-        self.module_seeds = os.path.join(self.outdir, "module_related_seeds.pckl")
+
+        self.seed_complements_js = os.path.join(self.outdir, "seed_complements.json")
+        self.seed_complements = os.path.join(self.outdir, "seed_complements.pckl")
+        self.module_seeds     = os.path.join(self.outdir, "module_related_seeds.pckl")
 
         # If we are using
         if config.users_models and self.skip_sets is False:
@@ -97,7 +98,9 @@ class PhylomintMGT:
                     dest_path = os.path.join(config.genres, os.path.basename(file))
                     shutil.copy(file, dest_path)
 
-       #
+        # In case of BiGG - based models, we need to map terms to ModelSEEd
+        # NOTE (Haris Zafeiropoulos, 2025-03-25):
+        # In the future, we may build a BiGG - based map of the KEGG MODULES' compounds
         if self.genre_reconstruction_with == "carveme":
             print("Load bigg2seed map...")
             # Open the tar.gz file
@@ -138,18 +141,15 @@ class PhylomintMGT:
             except FileExistsError as e:
                 raise e
 
-
         self.ex_suffix = "e" if self.genre_reconstruction_with == "carveme" else "e0"
         self.int_suffix = "c" if self.genre_reconstruction_with == "carveme" else "c0"
         self.compound_prefix = "M"
 
 
     def get_sets(self):
-
         """
         Get seed and non-seed sets for each model
         """
-
         # Build initial dictionaries
         SeedSetDic = dict()
         nonSeedSetDic = dict()
@@ -240,21 +240,12 @@ class PhylomintMGT:
         # Ensure inner dictionaries are not lost
         shared_dict_serializable = {k: dict(v) for k, v in shared_dict.items()}
 
-        with open("asd.json", "w") as f:
-            json.dump(shared_dict_serializable, f)  # Pretty print for readability
+        # with open(self.seed_complements_js, "w") as f:
+        #     json.dump(shared_dict_serializable, f)  # Pretty print for readability
 
         df = pd.DataFrame.from_dict(shared_dict_serializable)
-        with open("asd.pckl", "wb") as f:
+        with open(self.seed_complements, "wb") as f:
             pickle.dump(df, f)
-
-        """
-        import pandas as pd
-        # Load only rows where "Source" is "GPB:bin_000082"
-        df_partial = pd.read_hdf("module_related_seeds.h5", key="seeds", where='Source == "GPB:bin_000082"')
-
-        print(df_partial)
-        """
-
 
 
     def scores_and_overlaps_for_a_species(self, species, lock, shared_dict):
@@ -277,25 +268,30 @@ class PhylomintMGT:
             if partner == species:
                 continue
 
+            SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
+            MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, B_complememts_to_A = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
+
+            # Get only KEGG module - related
+            kegg_module_related_B_complememts_to_A = self.kegg_module_related_intersect(B_complememts_to_A)
+
+            # Line to print
             species = species.replace(".PATRIC", "")
             partner = partner.replace(".PATRIC", "")
 
-            SeedSetBConfidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
-            MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB, B_complememts_to_A = microbetagPI(species_seedset, SeedSetBConfidence, nonSeedB)
-            # Get only KEGG module - related
-            kegg_module_related_B_complememts_to_A = self.kegg_module_related_intersect(B_complememts_to_A)
-            # Line to print
             output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
             compls[partner] = kegg_module_related_B_complememts_to_A
             findings.add(output)
+
+
+        # Load KEGG related complements to shared dict
+        shared_dict[species] = compls
 
         # Safely write to the file with a lock
         with lock:
             with open(self.outfile, 'a') as f:
                 for r in findings:
                     f.write(r)
-            # Load KEGG related complements to shared dict
-            shared_dict[species] = compls
+
 
 
     def worker_function(self, lock, species, queue, shared_dict):
