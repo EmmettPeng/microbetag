@@ -17,7 +17,8 @@ __author__ = "Haris Zafeiropoulos <haris.zafeiropoulos@kuleuven.be>"
 
 import os, sys
 import yaml
-import logging
+
+import argparse
 
 from .utils import *
 from .tools import *
@@ -26,15 +27,9 @@ from .genres import GEMSReconstruction
 from .helpers import manta_input_net
 from .build_mtg_cx2 import build_pseudo_cx, build_ndex2_net
 from .pathway_complementarity import export_pathway_complementarities
-from .seed_complementarity import ExportSeedComplementarities
 
 
-# Set up custom logging format
-logging.basicConfig(
-    format='%(levelname)s: %(message)s',  # Define the format without "root:"
-    level=logging.INFO  # Set the logging level
-)
-
+logger = mtg_logger(__name__)
 
 def run_microbetag(config):
 
@@ -42,12 +37,12 @@ def run_microbetag(config):
     # Build network if not available
     # ----------------
     if config.precalc_only:
-        logging.info(
+        logger.info(
             "microbetag is about to perform the precalculations for your list of bins/MAGs only."
             "No network will be built."
         )
     elif not os.path.exists(config.network) or os.path.getsize(config.network) == 0:
-        logging.info(
+        logger.info(
             "[STEP] NETWORK INFERENCE WITH FLASHWEAVE"
             "Using the abundance table provided, microbetag is about to build a co-occurrence network.\n"
         )
@@ -57,14 +52,14 @@ def run_microbetag(config):
     # FAPROTAX
     # ----------------
     if config.abundance_table is not None:
-        logging.info("[STEP] LITERATURE ANNOTATION WITH FAPROTAX")
+        logger.info("[STEP] LITERATURE ANNOTATION WITH FAPROTAX")
         run_faprotax(config)
 
     # ----------------
     # phen annotations
     # ----------------
     if config.bins_ids is not None:
-        logging.info("[STEP] PREDICTING PHENOTYPIC TRAITS")
+        logger.info("[STEP] PREDICTING PHENOTYPIC TRAITS")
         phenotrex_genotype(config=config)
         phenotrex_predict(config=config)
 
@@ -73,10 +68,10 @@ def run_microbetag(config):
     # ----------------
     if (config.pathway_complementarity or config.seed_complementarity) and config.ko_merged is None:
         if len(os.listdir(config.prodigal)) != len(config.bins_ids):
-            logging.info("[STEP  ] PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
+            logger.info("[STEP  ] PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
 
             if config.bin_filenames is None:
-                logging.error(
+                logger.error(
                     "Bins files have not been provided and they are required for the precalculation steps of microbetag."
                     "Provide the path to the directory with your bins/MAGs under the bins_fasta parameter of the config.yml file."
                 )
@@ -90,7 +85,7 @@ def run_microbetag(config):
 
                 bin_fa = os.path.join(config.bins_path, bin_fa)
 
-                logging.info(f"Running Prodigal for {bin_id}")
+                logger.info(f"Running Prodigal for {bin_id}")
 
                 print(bin_fa, bin_id, config.prodigal)          # TODO: check if bin_id is actually only the basename of the whole path until extension
 
@@ -100,13 +95,14 @@ def run_microbetag(config):
     # Pathway complementarity
     # ----------------
     if config.pathway_complementarity:
+
         # ----------------
         # KEGG annotation - based on the DiTing implementation // required in case of pathway complementarities
         # ----------------
 
         if config.ko_merged is None:
 
-            logging.info("[STEP ] KEGG ANNOTATION OF THE ORFs \n")
+            logger.info("[STEP ] KEGG ANNOTATION OF THE ORFs \n")
 
             ko_list = os.path.join(config.kegg_db_dir, 'ko_list')
             ko_dic = ko_list_parser(ko_list)
@@ -115,7 +111,7 @@ def run_microbetag(config):
             config.ko_merged = os.path.join(config.kegg_annotations, 'ko_merged.txt')
 
             for bn in config.bin_filenames:
-                bin_id, extension = os.path.splitext(bn)
+                bin_id, _ = os.path.splitext(bn)
                 bin_kos_dir = os.path.join(hmmout_dir, bin_id)
                 os.makedirs(bin_kos_dir, exist_ok=True)
 
@@ -135,7 +131,8 @@ def run_microbetag(config):
             merge_ko(config.kegg_pieces_dir, config.ko_merged)
 
         else:
-            logging.info("A 3-col KEGG annotation file already available.")
+            logger.info("A 3-col KEGG annotation file already available.")
+            print("A 3-col KEGG annotation file already available.")
 
         # ----------------
         # Extract pathway complementarities
@@ -144,7 +141,8 @@ def run_microbetag(config):
 
         if not os.path.exists(config.alts_file) or not os.path.exists(config.compl_file):
 
-            logging.info("[STEP ] GET PATHWAY COMPLEMENTS ")
+            print("[STEP ] GET PATHWAY COMPLEMENTS ")
+            print(pivot_df)
             # bin_kos_per_module, alt_to_gapfill, complements =
             _, _ = export_pathway_complementarities(
                 config,
@@ -152,13 +150,20 @@ def run_microbetag(config):
             )
 
     # ----------------
-    # Build GENREs
+    # Seed complementarity
     # ----------------
     if config.seed_complementarity:
 
+        # In case of seed complementarity:
+        # 1. we need to make sure we have GEMs, then
+        # 2. we need to extract the seed and non-seed sets and their compls
+
+        # ----------------
+        # Build GENREs
+        # ----------------
         if not config.users_models:
 
-            logging.info("[STEP] GENOME-SCALE METABOLIC NETWORK RECONSTRUCTIONS")
+            logger.info("[STEP] GENOME-SCALE METABOLIC NETWORK RECONSTRUCTIONS")
 
             # Init reconstruction class
             build_genres = GEMSReconstruction(config)
@@ -170,17 +175,17 @@ def run_microbetag(config):
                     build_genres.rast_annotate_genomes()  # saves under config.reconstructions
 
                 elif config.gene_predictor == "prodigal":
-                    logging.info("DiTing .faa files will be used")  # go to the .faa case, i.e., the ORFs/
+                    logger.info("DiTing .faa files will be used")  # go to the .faa case, i.e., the ORFs/
 
                 elif config.gene_predictor == "fragGeneScan":
-                    logging.info("Get annotations with FragGeneScan.")
+                    logger.info("Get annotations with FragGeneScan.")
                     build_genres.fgs_annotate_genomes()   # saves under config.reconstructions
 
             elif config.input_for_recon_type == "coding_regions":
-                logging.info("CarveMe will be used with the users .ffn-like files.")
+                logger.info("CarveMe will be used with the users .ffn-like files.")
 
             else:
-                logging.warning(f"The combination of gene_predictor: {config.gene_predictor} \
+                logger.warning(f"The combination of gene_predictor: {config.gene_predictor} \
                     \nand genre_reconstruction_with: {config.genre_reconstruction_with}, are not supported")
 
             # Reconstruct step
@@ -191,92 +196,62 @@ def run_microbetag(config):
                 build_genres.carve_reconstructions()
 
             else:
-                logging.info("User models to be used for the seed complementarity step.")
+                logger.info("User models to be used for the seed complementarity step.")
 
-    # ----------------
-    # Phylomint
-    # ----------------
-    if config.seed_complementarity:
-        logging.info("[STEP] COMPUTING SEED SETS AND SCORES")
-        if not os.path.exists(config.phylomint_scores):
-            run_phylomint(config)
-        else:
-            logging.info("Seed scores already computed.")
+        # ----------------
+        # microbetag implementation of Phylomint
+        # ----------------
+        logger.info("[STEP] COMPUTING SEED SETS AND SCORES")
+        run_seed_complementarity(config)
 
-    # ----------------
-    # Export seed complementarities
-    # ----------------
-    if config.seed_complementarity:
-        logging.info("[STEP] EXPORTING SEED COMPLEMENTS")
-        seed_complements = ExportSeedComplementarities(config)
-        """
-        [NOTE]:consider running again "seed scores" (PhyloMint) using update seed sets
-        in this case, we should also edit the ConfidenceScore dictionary
-        by removing seeds that were removed in the update()
-        """
-        if config.genre_reconstruction_with == "carveme":
-            logging.info("We will map the BIGG compounds to ModelSEED ones.\
-                \nIn the future, we will map BiGG ids to KEGG so we do not have to go through ModelSEED in this scenario.")
-            seed_complements.map_carveme_seeds()
-
-        if not os.path.exists(seed_complements.module_seeds):
-            seed_complements.module_related_seeds()
-        else:
-            logging.info("Seed and non seed sets with compounds related to KEGG modules already retrieved.")
-
-        if not os.path.exists(seed_complements.seed_complements):
-            seed_complements.export_seed_complements()
-            logging.info("Seed complements were exported fine.")
-        else:
-            logging.info("Seed complements already exported.")
 
     # ----------------
     # Network clustering
     # ----------------
     if config.network_clustering and config.prev_manta_net is None:
 
-        logging.info("""[STEP]: network clustering using manta and the abundance table""")
+        logger.info("""[STEP]: network clustering using manta and the abundance table""")
         # Build original input file in cyjs format
         manta_input_net(config)
 
-        logging.info(
+        logger.info(
             "Base network has been built and saved."
             "manta is now clustering your network..."
         )
         # Run manta on the cyjs network
         run_manta(config)
 
-        logging.info("Base network has been built and saved.")
+        logger.info("Base network has been built and saved.")
 
     # ----------------
     # Annotate network in .cx format
     # ----------------
     if config.precalc_only is False:
-        logging.info("[STEP] ANNOTATE NETWORK ")
+        logger.info("[STEP] ANNOTATE NETWORK ")
         annotated_network = build_pseudo_cx(config)
         with open(config.microbetag_annotated_network_file, "w") as f:
                 annotated_network2file = convert_to_json_serializable(annotated_network)
                 json.dump(annotated_network2file, f)
-                logging.info("A microbetag-annotated network in .cx format was built sucessfully.")
+                logger.info("A microbetag-annotated network in .cx format was built sucessfully.")
 
         # Build cx2 with ndex2 library
         if build_ndex2_net(config.microbetag_annotated_network_file):
             # os.remove(config.microbetag_annotated_network_file)
-            logging.info("The pseudo .cx file was converted to CX2 through NDEx successfully.")
+            logger.info("The pseudo .cx file was converted to CX2 through NDEx successfully.")
 
     config.export_to_log()
-    logging.info("A parameters.log file with the parameters used in this run was built.")
+    logger.info("A parameters.log file with the parameters used in this run was built.")
 
-    logging.info("microbetag completed.")
+    logger.info("microbetag completed.")
 
 
 def print_help():
     help_message = """
-    Usage: python microbetag.py <path_to_config_yml>
+    Usage: microbetag --config <path_to_config_yml>
 
     Other options:
-    h        Display this help message.
-    v        Display version.
+    -h        Display this help message.
+    -v        Display version.
     """
     print(help_message)
 
@@ -289,33 +264,39 @@ def print_config_message():
     Please make sure you follow the instructions on the documentation site:
     https://hariszaf.github.io/microbetag/docs/tutorials/local/#input-and-configyml-files
     """
-    logging.error(conf_message)
+    logger.error(conf_message)
 
 
-if __name__ == "__main__":
+def main():
 
-    import argparse
-    parser = argparse.ArgumentParser(description="Set white background in an SVG file.")
-    parser.add_argument("--config", "-c", required=True, help="Path to the configuration yaml file.")
-    parser.add_argument("--version", "-v", required=True, help="Show microbetag stand-alone tool version")
-    parser.add_argument("--help", "-h", required=True, help="Show help message.")
+    parser = argparse.ArgumentParser(description="Microbetag CLI")
+
+    parser.add_argument("--config", "-c", help="Path to the configuration yaml file.")
+    parser.add_argument("-v", "--version", action="store_true", help="Show Microbetag version")
+
 
     args = parser.parse_args()
 
     if args.version:
-        print_version(); sys.exit()
+        print_version()
+        sys.exit()
 
-    if args.help:
-        print_help(); sys.exit()
+    elif args.config is None:
+        print_help()
+        sys.exit(0)
 
-    if args.config:
-
+    try:
         with open(args.config, 'r') as yaml_file:
-            try:
-                config = Config(yaml.safe_load(yaml_file), args.config)
-            except yaml.YAMLError as exc:
-                print_config_message() ; sys.exit(0)
+            config = Config(yaml.safe_load(yaml_file), args.config)
+    except yaml.YAMLError:
+        print_config_message()
+        sys.exit(1)
 
-        # Run microbetag pipeline
-        run_microbetag(config=config)
+    # Run microbetag pipeline
+    run_microbetag(config=config)
 
+
+
+if __name__ == "__main__":
+
+    main()

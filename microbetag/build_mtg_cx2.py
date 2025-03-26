@@ -12,7 +12,7 @@ Based on:
 import os
 import pickle
 import json
-import logging
+
 import datetime
 import ndex2.cx2
 import pyshorteners
@@ -20,9 +20,11 @@ import pandas as pd
 from typing import Dict
 
 from .networks import get_edgelist, read_cyjson
-from .utils import extend_complements, extend_faprotax, load_phenotypic_traits
+from .utils import extend_complements, extend_faprotax, load_phenotypic_traits, mtg_logger
 from .seed_complementarity import build_url_with_seed_complements, load_seed_complement_files
 
+
+logger = mtg_logger(__name__)
 
 
 def build_pseudo_cx(conf):
@@ -84,7 +86,7 @@ def build_pseudo_cx(conf):
 
     """Phen traits"""
     # IF PHEND ASKED..?
-    logging.info("Loading phenotypic traits")
+    logger.info("Loading phenotypic traits")
     bin_phen_traits, phentraits = load_phenotypic_traits(conf)
 
     for term in phentraits:
@@ -96,7 +98,7 @@ def build_pseudo_cx(conf):
     """FAPROTAX traits"""
     bin_faprotax_traits = faprotax_traits = None
     if conf.abundance_table is not None:
-        logging.info("Loading FAPROTAX traits")
+        logger.info("Loading FAPROTAX traits")
         bin_faprotax_traits, faprotax_traits = extend_faprotax(conf=conf)
         # Node columns reg. FAPROTAX annotations
         for term in faprotax_traits:
@@ -104,7 +106,7 @@ def build_pseudo_cx(conf):
             cyTableColumns.append(column)
 
     """PATHWAY complements"""
-    logging.info("Loading patwhay complementarities")
+    logger.info("Loading patwhay complementarities")
     complements_dict_ext = None
     if conf.pathway_complementarity:
 
@@ -119,13 +121,13 @@ def build_pseudo_cx(conf):
             cyTableColumns.append(edge_col)
 
     """SEED complements"""
-    logging.info("Loading seeds complementarities")
+    logger.info("Loading seeds complementarities")
     kmap = seed_scores = non_seed_sets = seed_complements_dict = None
     if conf.seed_complementarity:
 
         kmap = load_seed_complement_files(conf.kegg_mappings)
 
-        with open(conf.module_related_non_seeds, "rb") as f:
+        with open(conf.module_nonseeds, "rb") as f:
             non_seed_sets = pickle.load(f)
 
         with open(conf.seed_complements, "rb") as f:
@@ -296,7 +298,7 @@ def build_mtg_nodes(conf, edgelist, seq_id_to_taxonomy, phen_traits, faprotax_tr
             if taxonomy:
                 add_node_attribute(node_attributes["nodeAttributes"], node_id, "microbetag::taxonomy", taxonomy, "string")
             else:
-                logging.info(f"No taxonomy found for node {node_name}")
+                logger.info(f"No taxonomy found for node {node_name}")
 
         # Handle manta annotations if clustering is enabled
         if conf.network_clustering and manta_annotations:
@@ -317,7 +319,7 @@ def build_mtg_edges(conf, edgelist, seq_to_nodeID, node_counter, complements_dic
 
     shortener = pyshorteners.Shortener() if conf.tinyurl else None
 
-    logging.info("Shortener in the main build_cx function is %s" % shortener)
+    logger.info("Shortener in the main build_cx function is %s" % shortener)
 
     for case in edgelist.iterrows():
         id_a = case[1][0]
@@ -424,7 +426,7 @@ def add_edge_pathway_complements(id_x, id_y, complements_dict_ext, edges, edgeAt
     if id_x in complements_dict_ext and id_y in complements_dict_ext[id_x]:
         pathway_complements = complements_dict_ext[id_x][id_y]
         if not isinstance(pathway_complements, Dict):
-            logging.info(f"Taxa {id_x} and {id_y} found to have not pathway complements")
+            logger.info(f"Taxa {id_x} and {id_y} found to have not pathway complements")
             return check
         edges["edges"].append(pot_edge)
         edgeAttributes["edgeAttributes"].extend([
@@ -554,7 +556,7 @@ class UpdateCX2Netork():
                 node["v"]["name"] = node["v"]["display name"]
                 node["v"].pop("display name")
             except:
-                logging.info("No display name found for node %s" % node["id"])
+                # No display name found for node %s" % node["id"]
                 pass
             try:
                 if len(node["v"]["microbetag::taxonomy"].split(";") ) == 7:
@@ -566,7 +568,7 @@ class UpdateCX2Netork():
                     node["v"]["taxonomy::genus"],
                     node["v"]["taxonomy::species"]) = node["v"]["microbetag::taxonomy"].split(";")
             except:
-                logging.info("No taxonomy found for node %s" % node["id"])
+                logger.info("No taxonomy found for node %s" % node["id"])
                 pass
             nodes.append(node)
         return nodes
@@ -661,6 +663,6 @@ def build_ndex2_net(microbetag_pseudo_cx, outfile=None):
         return True
 
     except Exception as e:
-        logging.error('Error occurred when building cx2. %s' % str(e))
+        logger.error('Error occurred when building cx2. %s' % str(e))
         return False
 

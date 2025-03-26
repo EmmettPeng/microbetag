@@ -2,12 +2,16 @@ import os
 import time
 import cobra
 import random
-import logging
+
 import subprocess
 import multiprocessing
 
-from .utils import split_list, run_until_done, file_exists_and_nonzero, get_library_version, get_tool_location
+from .utils import (
+    split_list, run_until_done, file_exists_and_nonzero,
+    get_library_version, get_tool_location, mtg_logger
+)
 
+logger = mtg_logger(__name__)
 
 class GEMSReconstruction():
     """
@@ -37,7 +41,7 @@ class GEMSReconstruction():
             pool.close()
             pool.join()
             counter += chunk_size
-            logging.info(
+            logger.info(
                 "We now have annotated %s genomes out of the %s" % (counter, len(self.config.bin_filenames))
             )
 
@@ -60,7 +64,7 @@ class GEMSReconstruction():
             ])
         if not file_exists_and_nonzero(gto_filename):
             rast_create_genome_command = ''.join(['\\:' if char == ':' else char for char in rast_create_genome_command])
-            logging.info("rast_create_genome_command: %s", rast_create_genome_command)
+            logger.info("rast_create_genome_command: %s", rast_create_genome_command)
             run_until_done(rast_create_genome_command)
 
         # rast-process-genome: run the default RASTtk pipeline tool
@@ -70,7 +74,7 @@ class GEMSReconstruction():
             ])
         if not file_exists_and_nonzero(gto_filename_2):
             rast_process_genome_command = ''.join(['\\:' if char == ':' else char for char in rast_process_genome_command])
-            logging.info("rast_process_genome_command: %s", rast_process_genome_command)
+            logger.info("rast_process_genome_command: %s", rast_process_genome_command)
             run_until_done(rast_process_genome_command)
 
         # rast-export-genome protein_fasta: export the genome in a desired format
@@ -83,7 +87,7 @@ class GEMSReconstruction():
             ])
         if not file_exists_and_nonzero(faa_filename):
             rast_export_genome_command = ''.join(['\\:' if char == ':' else char for char in rast_export_genome_command])
-            logging.info("rast_export_genome_command: %s", rast_export_genome_command)
+            logger.info("rast_export_genome_command: %s", rast_export_genome_command)
             run_until_done(rast_export_genome_command)
 
     def modelseed_reconstructions(self):
@@ -118,7 +122,7 @@ class GEMSReconstruction():
         model_filename =  os.path.join(self.config.genres, "".join([model_id, ".xml"]))
         if os.path.exists(model_filename):
             return 1
-        logging.info("Model to be reconstructed: %s", model_id)
+        logger.info("Model to be reconstructed: %s", model_id)
         model = self.recursive_build(model_id, annotation_faa_path)
         cobra.io.write_sbml_model(cobra_model = model, filename = model_filename)
 
@@ -151,7 +155,7 @@ class GEMSReconstruction():
             return model
         except:
             time.sleep(random.randint(1, 20))
-            logging.info("Recursive run for model_id: %s", model_id)
+            logger.info("Recursive run for model_id: %s", model_id)
             return self.recursive_build(model_id, annotation_faa_path, counter)
 
     def carve_reconstructions(self):
@@ -168,7 +172,7 @@ class GEMSReconstruction():
                 for tfile in os.listdir(gene_predictor_path)
                 if tfile.endswith(".faa")
             ]
-            logging.info(faa_files)
+            logger.info(faa_files)
             self.run_carve(faa_files)
 
         elif self.config.input_for_recon_type in ["coding_regions", "proteins_faa"]:
@@ -187,9 +191,8 @@ class GEMSReconstruction():
             xml = os.path.join(self.config.genres, f"{bin_id}.xml")
             carve_params = ["carve", "--solver", "gurobi", "-o", xml]
             if os.path.exists(xml) and os.path.getsize(xml) > 0:
-                logging.info("""
-                An .xml file for this bin is already available.
-                This will be used for seed complementarities and carve step will be skiped."""
+                logger.info(
+                    f"""A GEM (.xml) based on {faa} is already available to be used for seed complementarities; carve step will be skiped."""
                 )
                 continue
             if dna:
@@ -214,7 +217,7 @@ class GEMSReconstruction():
             bin_id, _ = os.path.splitext(bin_filename)
             faa = os.path.join(self.config.reconstructions, bin_id)
             if not file_exists_and_nonzero(faa):
-                logging.info(f"Bin {bin_filename} is being annotated using FGS.")
+                logger.info(f"Bin {bin_filename} is being annotated using FGS.")
                 fgs_params = [
                     FGS,
                     "-s",  bin_file,
@@ -223,14 +226,19 @@ class GEMSReconstruction():
                     "-p", str(self.config.threads),
                     "-t", COMPLETE
                 ]
-                fgs_command = " ".join(fgs_params)
-                os.system(fgs_command)
+                # fgs_command = " ".join(fgs_params)
+                # os.system(fgs_command)
+                try:
+                    _ = subprocess.run(fgs_params, capture_output=True, text=True, check=True)
+                except subprocess.CalledProcessError as e:
+                    logger.error(f"FGS annotation failed for {bin_filename}. Error:\n{e.stderr}")
+
         os.chdir(cwd)
 
 
 def fire_microbetag(yaml_file):
     import sys
-    logging.warning(
+    logger.warning(
         """
         \n\n******
         microbetag kept calling the recursive function for building modelseedpy GEM.

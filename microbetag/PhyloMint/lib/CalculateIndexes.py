@@ -1,93 +1,36 @@
-#!/usr/bin/env python3
 
-# calculate competition as a normalized weighted sum
-def MetabolicCompetitionIdx(SeedSetAConfidence, SeedSetBConfidence):
-    '''
-    Calculate metabolic compeition index between SetA and Set B
-    Input: SeedSet dictionary with confidence scores
-    Return: Normalized weight sum metabolic competition index
-    '''
+def calculate_scores(SeedA, SeedSetAConfidence, SeedB, nonSeedB):
 
-    # get seed set A & B
-    SeedA = set(SeedSetAConfidence.keys())
-    SeedB = set(SeedSetBConfidence.keys())
+        # get intersects
+        intersectAB = SeedA.intersection(SeedB)
 
-    # get intersects
-    intersectAB = SeedA.intersection(SeedB)
+        # store weighted sum
+        normIntersect = 0.0
 
-    # store weighted sum
-    normIntersect = 0.0
+        # get weighted total
+        sumA = sum(SeedSetAConfidence.values())
 
-    # get weighted total
-    sumA = sum(SeedSetAConfidence.values())
+        # count intersect of confidence scores
+        for seed in intersectAB:
+            normIntersect += SeedSetAConfidence[seed]
 
-    # count intersect of confidence scores
-    for seed in intersectAB:
-        normIntersect += SeedSetAConfidence[seed]
+        # Calculate normalized weighted sum
+        MetabolicCompetitionIdx = (normIntersect/sumA)
 
-    # calculate normalized weighted sum
-    MetabolicCompetitionIdx = (normIntersect/sumA)
+        # Get the union set using the union (|) operator
+        SetB = (SeedB|nonSeedB)
 
-    return MetabolicCompetitionIdx
+        # Get intersects intersect (A n nonB) &! B
+        intersect_seedA_nonseedB = SeedA.intersection(nonSeedB)
+        intersect_seedA_setB = SeedA.intersection(SetB)
 
-# calculated cooperation with seedsA vs nonseedsB
-def MetabolicCooperationIdx(SeedSetAConfidence, SeedSetBConfidence, nonSeedB):
-    '''
-    Calculate metabolic cooperation index between SeedSetA and nonSeedSetB
-    Normalized weighted sum
-    '''
+        # calculate normalized weighted sum
+        MetabolicCooperationIdx = (len(intersect_seedA_nonseedB)/len(intersect_seedA_setB))
 
-    SeedA = set(SeedSetAConfidence.keys())
-    SeedB = set(SeedSetBConfidence.keys())
-    nonSeedB = set(nonSeedB)
-    SetB = (SeedB|nonSeedB)
-
-    # get intersects intersect (A n nonB) &! B
-    intersect_seedA_nonseedB = SeedA.intersection(nonSeedB)
-    intersect_seedA_setB = SeedA.intersection(SetB)
-
-    # calculate normalized weighted sum
-    MetabolicCooperationIdx = (len(intersect_seedA_nonseedB)/len(intersect_seedA_setB))
-
-    return MetabolicCooperationIdx
+        return round(MetabolicCooperationIdx, 2), round(MetabolicCompetitionIdx, 2)
 
 
+def extract_complements(SeedA, nonSeedB):
 
-def microbetagPI(SeedSetAConfidence, SeedSetBConfidence, nonSeedB):
-
-    SeedA = set(SeedSetAConfidence.keys())
-    SeedB = set(SeedSetBConfidence.keys())
-    nonSeedB = set(nonSeedB)
-
-    # get intersects
-    intersectAB = SeedA.intersection(SeedB)
-
-    # store weighted sum
-    normIntersect = 0.0
-
-    # get weighted total
-    sumA = sum(SeedSetAConfidence.values())
-
-    # count intersect of confidence scores
-    for seed in intersectAB:
-        normIntersect += SeedSetAConfidence[seed]
-
-    # calculate normalized weighted sum
-    MetabolicCompetitionIdx = (normIntersect/sumA)
-
-    SetB = (SeedB|nonSeedB)
-
-    # get intersects intersect (A n nonB) &! B
-    intersect_seedA_nonseedB = SeedA.intersection(nonSeedB)
-    intersect_seedA_setB = SeedA.intersection(SetB)
-
-    # calculate normalized weighted sum
-    MetabolicCooperationIdx = (len(intersect_seedA_nonseedB)/len(intersect_seedA_setB))
-
-    # Get complementarities from B non-seeds to A's seeds
-    # TODO (Haris Zafeiropoulos, 2025-03-25):
-    # move it on its own maybe ? the lock does not seem to work fine both with writing the phylomint scores files
-    # and updating a shared dict ..
-    complementerarities = SeedA.intersection(nonSeedB)
-
-    return round(MetabolicCooperationIdx, 2), round(MetabolicCompetitionIdx, 2), complementerarities
+        complementerarities = SeedA.intersection(nonSeedB)
+        return complementerarities

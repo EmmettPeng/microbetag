@@ -1,7 +1,7 @@
 """
 Utils supporting tasks for file parsing and formating
 """
-import os, re
+import os, re, sys
 import json, csv
 import time
 import copy
@@ -9,10 +9,9 @@ import glob
 import shutil
 import random
 import logging
-import subprocess
+import colorlog
 import pandas as pd
 from typing import List
-
 
 
 # Handling data related
@@ -96,6 +95,33 @@ class SetEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+def mtg_logger(script):
+
+    logger = logging.getLogger(script)
+    logger.setLevel(logging.INFO)
+
+    if not logger.handlers:
+        # handler to sys.stdout
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setLevel(logging.INFO)
+        # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = colorlog.ColoredFormatter(
+            "%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            log_colors={
+                "DEBUG": "cyan",
+                "INFO": "blue",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "bold_red",
+            },
+        )
+        sh.setFormatter(formatter)
+        logger.addHandler(sh)
+        logger.propagate = False  # Prevent duplicate logging
+
+    return logger
+
+
 def get_files_with_suffixes(directory, suffixes):
     """
     Recursively retrieves files from a specified directory and its subdirectories
@@ -141,7 +167,7 @@ def run_until_done(command: str):
         return 1
     else:
         time.sleep(random.randint(2, 10))
-        logging.warning("recurscive run of: %s", command)
+        logger.warning("recurscive run of: %s", command)
         run_until_done(command)
 
 
@@ -269,7 +295,7 @@ def parse_hmmout(hmmout_file, hmmout_dir):
     """
     if hmmout_file.endswith('.hmmout'):
         kobasename = hmmout_file.rsplit('.', 1)[0]
-        basename = kobasename.split('.', 1)[1]
+        basename   = kobasename.split('.', 1)[1]
         hmmout_file_path = os.path.join(hmmout_dir, hmmout_file)
         with open(hmmout_file_path, 'r') as fi:
             for line in fi:
@@ -299,6 +325,7 @@ def load_merged_ko_file(merged_ko):
         merged_ko = merged_ko.rsplit('.gz', 1)[0]
 
     df = pd.read_csv(merged_ko, sep="\t")
+
     column_names = df.columns.tolist()
     bin_id, _, ko = column_names[:3]
 
@@ -348,7 +375,7 @@ def ensure_flashweave_format(conf):
         return 1
 
     except Exception as e:
-        logging.error(
+        logger.error(
             """Error in ensuring FlashWeave format: %s.
             Please check your FlashWeave parameters, especially `n_obs_min` and `k_max`.""",
             e
@@ -492,7 +519,7 @@ def extend_faprotax(conf):
 
 def load_phenotypic_traits(conf):
     """PhenDB-like traits"""
-    logging.info("Loading phenotypic traits")
+    logger.info("Loading phenotypic traits")
     bin_phen_traits = {}
     phentraits = set()
 
@@ -569,7 +596,7 @@ def detect_separator(file_path):
             percent_size = max(percent_size, int(1e5))
 
             # Log sizes
-            logging.info(f"file_size of {file_path}: {file_size}") ; logging.info(f"percent_size:  {percent_size}")
+            logger.info(f"file_size of {file_path}: {file_size}") ; logger.info(f"percent_size:  {percent_size}")
 
             # # Move to the start of the file
             file.seek(0)
@@ -634,5 +661,9 @@ def get_tool_location(software):
 
     else:
         # If neither path works
-        logging.error(f"{software} is not available. Please install it first.")
+        logger.error(f"{software} is not available. Please install it first.")
         raise SystemExit(f"{software} is not available. Please install it first.")
+
+
+
+logger = mtg_logger(__name__)

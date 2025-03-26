@@ -1,9 +1,10 @@
-import logging
 import json
 import pandas as pd
 import networkx as nx
 
-from .utils import detect_separator, find_three_column_format
+from .utils import detect_separator, find_three_column_format, mtg_logger
+
+logger = mtg_logger(__name__)
 
 # Base .cx  -- TODO : CHECK ID DEPRECATED
 def build_edge_list(edgelist, metadata_file=None):
@@ -189,7 +190,7 @@ def build_a_base_node(node_name, map_seq, is_taxon: bool):
         try:
             node["data"]["GTDB-representative"] = case["gtdb_gen_repr"]
         except:
-            logging.info("Custom genome, thus no GTDB one used for predictions.")
+            # logger.info("Custom genome, thus no GTDB one used for predictions.")
             pass
 
     return node

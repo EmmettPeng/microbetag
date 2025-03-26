@@ -12,7 +12,7 @@ from .pathway_complementarity import (
     export_pathway_complementarities, all_complements, all_alternatives, build_kegg_url
 )
 from .seed_complementarity import (
-    PhylomintMGT,   # ExportSeedComplementarities,
+    ExportSeedComplementarities,
     load_seed_complement_files, build_url_with_seed_complements
 )
 from .build_mtg_cx2 import build_pseudo_cx, UpdateCX2Netork, build_ndex2_net

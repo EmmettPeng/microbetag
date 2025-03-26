@@ -1,12 +1,14 @@
 import os, json
 import ast  #  process trees of the Python abstract syntax grammar.
-import logging
+
 import itertools
 import pyshorteners
 import pandas as pd
 from tqdm import tqdm
 
-from .utils import SetEncoder, flatten
+from .utils import SetEncoder, flatten, mtg_logger
+
+logger = mtg_logger(__name__)
 
 
 def build_kegg_url(kegg_map, clean_path, missing_kos, shortener=None):
@@ -33,7 +35,7 @@ def build_kegg_url(kegg_map, clean_path, missing_kos, shortener=None):
         # and the join() would return an error.
         url_ko_map_colored = "".join([color_mapp_base_url, kegg_map,  "/", beneficiarys_kos, complements_kos])
         if shortener is not None:
-            logging.info("Shortening the URL.")
+            logger.info("Shortening the URL.")
             url_ko_map_colored = shortener.tinyurl.short(url_ko_map_colored)
     except:
         url_ko_map_colored = "N/A"
@@ -52,7 +54,7 @@ def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_outp
 
 
     """
-    logging.info("Step 2, build alts.json file.")
+    logger.info("Step 2, build alts.json file.")
 
     with open(modules_definitions_json_map, 'r') as f:
         mo_map = json.load(f)
@@ -116,7 +118,7 @@ def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_outp
     with open(alts_output_file, "w") as file:
         json.dump(bins_alternatives, file, cls=SetEncoder)
 
-    logging.info("Step 2, the alternatives of each bin's modules were enumerated.")
+    logger.info("Step 2, the alternatives of each bin's modules were enumerated.")
 
     return bins_alternatives
 
@@ -130,7 +132,7 @@ def all_complements(bin_kos_per_module, bins_alternatives, module_to_map, compl_
         bins_alternatives
         module_to_map
     """
-    logging.info("Build pathCompls.json file.")
+    logger.info("Build pathCompls.json file.")
     unique_url_input = {}
 
     # Init shortener
@@ -173,7 +175,7 @@ def all_complements(bin_kos_per_module, bins_alternatives, module_to_map, compl_
     # Write the pathCompls.json file
     with open(compl_output_file, "w") as file:
         json.dump(complements, file, cls=SetEncoder)
-    logging.info("Step 3, the potential complementarities among the bins were enumerated.")
+    logger.info("Step 3, the potential complementarities among the bins were enumerated.")
 
     return complements
 
@@ -207,7 +209,7 @@ def taxon_kos_per_module(bins_kos_df, ko_terms_per_module_definition):
 
     bin_kos_per_module = {}
     # Iterate over each column in the second dataframe
-    logging.info("Step 1, KOs related to a module present on each bin.")
+    logger.info("Step 1, KOs related to a module present on each bin.")
     for bin_id in bins_kos_df.columns:
         bin_kos_per_module[bin_id] = {}  # Initialize inner dictionary for each bin
         for module, definition_ko_terms in definitions_df.items():

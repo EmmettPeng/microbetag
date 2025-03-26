@@ -1,28 +1,29 @@
 import os, sys
 import glob
 import shutil
-import logging
+
 import subprocess
 import multiprocessing
 from typing import List
 
 from .utils import (
     get_files_with_suffixes, get_library_version, get_tool_location,
-    ensure_flashweave_format, ensure_same_namespace_after_fw
+    ensure_flashweave_format, ensure_same_namespace_after_fw, mtg_logger
 )
 
-from .seed_complementarity import PhylomintMGT
+from .seed_complementarity import ExportSeedComplementarities
 
-def run_phylomint(config):
+
+logger = mtg_logger(__name__)
+
+def run_seed_complementarity(config):
     """
     Invoke PhyloMInt as edited from microbetag team to support parallel calculation of the seed and non seed sets
     and save corresponding sets to json files.
     """
-
-    phylomint = PhylomintMGT(config)
-
-    if config.skip_sets is False:
-
+    config.skip_sets = True
+    if config.prev_conf is None or os.path.exists(config.prev_conf) is False:
+        config.skip_sets = False
         if config.users_models:
             genre_files = [
                 os.path.join(config.for_reconstructions, file)
@@ -44,9 +45,13 @@ def run_phylomint(config):
                 dest_path = os.path.join(config.genres, os.path.basename(file))
                 shutil.move(file, dest_path)
 
+    phylomint = ExportSeedComplementarities(config)
+
+    if phylomint.skip_sets is False:
         phylomint.get_sets()
 
-    phylomint.get_scores_and_compls()
+    if phylomint.get_scores or phylomint.get_complements:
+        phylomint.get_scores_and_compls()
 
 
 def hmmsearch(params: List):
@@ -74,7 +79,7 @@ def hmmsearch(params: List):
     try:
         os.system(cmd)
     except:
-        logging.warning("Something wrong with KEGG hmmsearch!")
+        logger.warning("Something wrong with KEGG hmmsearch!")
 
 
 def run_prodigal(fasta, basename, outdir):
@@ -101,14 +106,14 @@ def run_prodigal(fasta, basename, outdir):
                 ]
     cmd = ' '.join(cmd_para)
     if os.path.exists(faa_file) or os.path.exists(fna_file) or os.path.exists(ffn_file):
-        logging.info("ORFs already predicted for bin: %s", basename)
+        logger.info("ORFs already predicted for bin: %s", basename)
     else:
-        logging.info("ORFs to be predicted for bin: %s", basename)
+        logger.info("ORFs to be predicted for bin: %s", basename)
         try:
             os.system(cmd)
             print("ok. ")
         except:
-            logging.warning("Something wrong with prodigal annotation!")
+            logger.warning("Something wrong with prodigal annotation!")
 
 
 def kegg_annotation(faa, basename, out_dir, db_dir, ko_dic, threads):
@@ -124,11 +129,11 @@ def kegg_annotation(faa, basename, out_dir, db_dir, ko_dic, threads):
         ko_dic (Dict):
         threads (int): Number of threads to be used
     """
-    logging.info('KEGG annotation for %s', basename)
+    logger.info('KEGG annotation for %s', basename)
     params = []
 
     if not os.path.exists(faa):
-        logging.warn(f"A .faa file for {basename} is not availavle. microbetag will skip it.")
+        logger.warn(f"A .faa file for {basename} is not availavle. microbetag will skip it.")
         return False
 
     for knum, info in ko_dic.items():
@@ -159,7 +164,7 @@ def kegg_annotation(faa, basename, out_dir, db_dir, ko_dic, threads):
 
         params.append((threshold_method, info[0], outtype, output, hmm_db, faa))
 
-    logging.info("Number of KEGG processes to be performed: %s", str(len(params)))
+    logger.info("Number of KEGG processes to be performed: %s", str(len(params)))
     process = multiprocessing.Pool(threads)
     process.map(hmmsearch, params)
 
@@ -172,7 +177,7 @@ def phenotrex_genotype(config):
     """
     if not os.path.exists(config.genotypes_file):
 
-        logging.info("Get phenotrex predictions")
+        logger.info("Get phenotrex predictions")
         suffixes = [".fa", ".fasta", ".gz"]
         bin_files = get_files_with_suffixes(config.bins_path, suffixes)
         bin_files_in_a_row = " ".join(bin_files)
@@ -211,9 +216,9 @@ def phenotrex_genotype(config):
             # Run the command
             compute_genotype_command = " ".join(compute_genotype_params)
             if os.system(compute_genotype_command) != 0:
-                logging.info("Try phenotrex genotype for the second time.")
+                logger.info("Try phenotrex genotype for the second time.")
                 if os.system(compute_genotype_command) != 0:
-                    logging.error("Phenotrex compute genotype command failed.")
+                    logger.error("Phenotrex compute genotype command failed.")
                     sys.exit(0)
         # Local case
         else:
@@ -221,7 +226,7 @@ def phenotrex_genotype(config):
             try:
                 subprocess.run(compute_genotype_command, shell=True, check=True)
             except Exception as e:
-                logging.error(e)
+                logger.error(e)
                 sys.exit(1)
 
 
@@ -241,7 +246,7 @@ def phenotrex_predict(config):
 
         # Skip if predictions already computed
         if os.path.exists(model_predictions_output):
-            logging.info("Predictions already exist for model: %s", model_name)
+            logger.info("Predictions already exist for model: %s", model_name)
 
         else:
 
@@ -269,11 +274,11 @@ def phenotrex_predict(config):
                 subprocess.run(predict_trait_command, shell=True, check=True)
 
             except subprocess.CalledProcessError as e:
-                logging.warn(f"Command execution failed with return code {e}")
+                logger.warn(f"Command execution failed with return code {e}")
 
     # If no predictions file is present for any classes, probably something went off.
     if not any(glob.glob(os.path.join(config.predictions_path, "*.prediction.tsv"))):
-        logging.error("No prediction was able to be retrieved with phenotrex. Check your input files.")
+        logger.error("No prediction was able to be retrieved with phenotrex. Check your input files.")
         sys.exit(0)
 
     # IN CASE OF CONTAINER CONSIDER..
@@ -285,7 +290,7 @@ def phenotrex_predict(config):
 def run_manta(config):
     import time
     # Build the manta command
-    logging.info("Running manta clustering algorithm.")
+    logger.info("Running manta clustering algorithm.")
     manta_output_file = "/".join([config.output_dir, 'manta_annotated'])
     manta_params = [
         "manta",
@@ -305,17 +310,17 @@ def run_manta(config):
                 Most likely this is because clusters could not be grouped based on the provided network and the parameters setup of manta.
                 Yet, microbetag will continue to the following steps without considering for clusters.
             """
-            logging.warning(e)
+            logger.warning(e)
             # Changed cfg so the buld_cx_annotated_graph function will not fail.
             config.network_clustering = False
         else:
-            logging.info("""manta ran fine.""")
+            logger.info("""manta ran fine.""")
         m2 = time.time()
         time = " ".join(["Network clustering with manta took:", str(m2 - m1), "sec"])
-        logging.info(time)
+        logger.info(time)
 
     except Exception as e:
-        logging.warning(e)
+        logger.warning(e)
         config.network_clustering = False
 
 
@@ -326,14 +331,14 @@ def run_flashweave(config):
 
     # Run FlashWeave
     from julia.api import Julia
-    logging.info("Fix FlashWeave arguments from config.")
+    logger.info("Fix FlashWeave arguments from config.")
     pair_args = set()
     for arg, values in config.flashweave_args.items():
         if values["required"]:
             if isinstance(values["value"], bool):
                 pair_args.add( ( arg, str(values["value"]).lower()) )
             else:
-                logging.error(f'You need to provide values for "{arg}" argument of FlashWeave.') ; sys.exit(0)
+                logger.error(f'You need to provide values for "{arg}" argument of FlashWeave.') ; sys.exit(0)
         else:
             if values["value"] is not None:
                 if values["type"] == "Bool":
@@ -344,20 +349,20 @@ def run_flashweave(config):
     pair_args.add(("transposed", "true"))
     learn_in = ",".join(f"{arg[0]}={arg[1]}" for arg in pair_args)
 
-    logging.info("Init Julia through Python")
+    logger.info("Init Julia through Python")
     jl = Julia(compiled_modules=False)
     jl.using("FlashWeave")
 
     # Run FlashWeave based on presence/absence of a metadata file
     if config.metadata_file:
-        logging.info("Running FlashWeaeve along with a metadata file.")
-        logging.info(
+        logger.info("Running FlashWeaeve along with a metadata file.")
+        logger.info(
             f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", "{config.metadata_file}", {learn_in}))'
         )
         jl.eval(f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", "{config.metadata_file}", {learn_in}))')
     else:
-        logging.info("Running FlashWeaeve.")
-        logging.info(
+        logger.info("Running FlashWeaeve.")
+        logger.info(
             f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", {learn_in}))'
         )
         jl.eval(f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", {learn_in}))')

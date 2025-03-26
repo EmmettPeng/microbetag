@@ -3,16 +3,11 @@ import os
 import logging
 from .helpers import *
 from .networks import get_edgelist
-from .utils import resolve_file_path, detect_separator
+from .utils import resolve_file_path, detect_separator, mtg_logger
 
 
 
-# Set up custom logging format
-logging.basicConfig(
-    format='%(levelname)s: %(message)s',  # Define the format without "root:"
-    level=logging.WARNING  # Set the logging level
-)
-
+logger = mtg_logger(__name__)
 
 def load_abundance(abd_file):
     """
@@ -76,14 +71,11 @@ class Config:
         abd_tbl_filename = conf.get("abundance_table_file", {}).get("file_path")
         self.abundance_table = resolve_file_path(self.base_dir, abd_tbl_filename)
 
-        # if self.abundance_table is not None:
-        #     self.delimiter = detect_separator(self.abundance_table)
-
         # Edgelist of provided network
         edge_list = conf.get("edge_list", {}).get("file_path")
         self.network = resolve_file_path(self.base_dir, edge_list)  #os.path.join(self.base_dir, edge_list) if edge_list else None
 
-        # NOTE: Setting precalculations only as true, also allows to get a Config instance
+        # NOTE: Setting precalculations only as true allows to get a Config instance
         # without providing an abundance table or network, meaning you can use the Config instance
         # for partial/specific tasks of microbetag.
         precalc_only = conf.get("precalulations_only").get("value")
@@ -192,7 +184,7 @@ class Config:
         min_proba = conf.get("min_proba", {}).get("value") ; self.min_proba = min_proba if not None else 0.6
 
         # Mappings
-        mappings = MappingPaths(config=self)
+        mappings = MappingPaths()
         self.__dict__.update(vars(mappings))
 
         # FAPROTAX
@@ -208,18 +200,13 @@ class Config:
             else False
         )
         if self.network_clustering:
-            self.prev_manta_net = conf.get("manta_network").get("file_path")
+            self.prev_manta_net = conf.get("prev_clustered_network").get("file_path")
             self.manta_net = (
                 os.path.join(self.base_dir, self.prev_manta_net)
                 if self.prev_manta_net is not None
                 else os.path.join(self.output_dir, 'manta_annotated.cyjs')
             )
             self.base_network_file = os.path.join(self.output_dir, "basenet.cyjs")
-
-
-        # # Set variables regarding GENREs provided
-        # genres = GenresHandler(config=self)
-        # self.__dict__.update(vars(genres))
 
         # Seed complementarity
         sc = SeedComplementarityHandler(config=self)
@@ -250,13 +237,10 @@ class Config:
             logging.warn("Could not load the deepnog weights. Please check the deepnog installation and setup.")
             pass
 
-
         logging.info("Configuration file loaded successfully.")
 
 
     def export_to_log(self, log_file="parameters.log"):
-        logging.basicConfig(filename=log_file, level=logging.INFO, format='%(message)s')
-        print("Instance attribute values:")
-        for key, value in self.__dict__.items():
-            print(f"{key}: {value}")
-
+        args = convert_to_json_serializable(self.__dict__)
+        with open(log_file, "w") as f:
+            json.dump(args, f)
