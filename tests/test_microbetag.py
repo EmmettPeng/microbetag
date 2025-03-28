@@ -3,7 +3,7 @@ import unittest
 
 # Main microbetag script
 root_dir = os.path.dirname(os.path.dirname(__file__))
-microbetag_main = os.path.join(root_dir, "microbetag.py")
+microbetag_main = os.path.join(root_dir, "microbetag/microbetag.py")
 
 # Input test files
 test_data = os.path.join(root_dir, "test_data", "test_microbetag")
@@ -25,7 +25,7 @@ class testMicrobetag(unittest.TestCase):
 
     def testMicrobetagRun(self):
 
-        params = ["python", microbetag_main, config_file]
+        params = ["microbetag", "--config", config_file]
         cmd = " ".join(params)
         os.system(
             cmd

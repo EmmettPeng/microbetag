@@ -47,7 +47,7 @@ class testPathwayComplementarity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         config = Config()
-        cls.map_paths = MappingPaths(config=config)
+        cls.map_paths = MappingPaths()
         cls.pivot_df = load_merged_ko_file(ko_merged)
         cls.bin_kos_per_module = None
         cls.bins_alternatives = None
