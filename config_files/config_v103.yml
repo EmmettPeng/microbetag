@@ -202,6 +202,26 @@ prev_calc_seed_sets:
     Leave empty if no previously calculated dictionaries.
   type: string
 
+
+prev_conf: 
+
+  file_path:
+  description: >
+
+  required:
+  type:
+
+
+prev_nonseeds:
+
+  file_path:
+  description: >
+    
+  required:
+  type:
+
+
+
 # -----
 # Metabolic network reconstruction: there parameters should be considered only in case seed complementarity 
 # is about to be performed and metabolic networks are not already available
@@ -268,7 +288,7 @@ network_clustering:
   required: False
 
 
-manta_network:
+prev_clustered_network:
   file_path: 
   description: >
     In case you have performed manta already in a previous run of microbetag or as a stand-alone tool, 

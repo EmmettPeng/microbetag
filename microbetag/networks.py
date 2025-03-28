@@ -22,26 +22,26 @@ def build_edge_list(edgelist, metadata_file=None):
     - pd.DataFrame (optional): Edges that were excluded based on metadata.
     """
     # Read the edge list into a DataFrame
-    pd_edgelist = pd.read_csv(edgelist, sep="\t", header=None, names=["node_a", "node_b", "score"])  # skiprows=
+    pd_edgelist = pd.read_csv(edgelist, sep="\t", header=None, names=["node_A", "node_B", "score"])  # skiprows=
 
     if metadata_file:
         # Read the metadata file and create a list of elements to exclude
         elements_to_exclude = pd.read_csv(metadata_file, sep="\t", header=None, index_col=0).index.to_list()
 
         # Define a mask to filter out rows with nodes in the exclusion list
-        mask = ~pd_edgelist.apply(lambda row: any(env in row['node_a'] or env in row['node_b'] for env in elements_to_exclude), axis=1)
+        mask = ~pd_edgelist.apply(lambda row: any(env in row['node_A'] or env in row['node_B'] for env in elements_to_exclude), axis=1)
 
         # Separate DataFrame based on the mask
         pd_filtered_edgelist = pd_edgelist[mask].copy()
         pd_metadata_edges = pd_edgelist[~mask].copy()
 
         # Create 'pair-of-taxa' column for filtered edges
-        pd_filtered_edgelist["pair-of-taxa"] = pd_filtered_edgelist['node_a'] + ":" + pd_filtered_edgelist["node_b"]
+        pd_filtered_edgelist["pair-of-taxa"] = pd_filtered_edgelist['node_A'] + ":" + pd_filtered_edgelist["node_B"]
 
         return pd_filtered_edgelist, pd_metadata_edges
     else:
         # Return the original edge list if no metadata file is provided
-        pd_edgelist["pair-of-taxa"] = pd_edgelist['node_a'].astype(str) + ":" + pd_edgelist["node_b"]
+        pd_edgelist["pair-of-taxa"] = pd_edgelist['node_A'].astype(str) + ":" + pd_edgelist["node_B"]
         return pd_edgelist
 
 
@@ -100,10 +100,10 @@ def read_cyjson(filename, direction=False):
 
 def get_edgelist(conf):
     """ Loads a 3-column network file as pd.DataFrame"""
-    delimiter = detect_separator(conf.network)
+    delimiter        = detect_separator(conf.network)
     line_num, header = find_three_column_format(conf.network, delimiter)
-    edgelist = pd.read_csv(conf.network, sep=delimiter, skiprows=line_num-1, header=header)
-
+    edgelist         = pd.read_csv(conf.network, sep=delimiter, skiprows=line_num-1, header=header)
+    edgelist.columns = ["node_A", "node_B", "microbetag::weight"]
     return edgelist
 
 
@@ -116,7 +116,7 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
     """
 
     edgelist = get_edgelist(conf)
-    edgelist.columns = ["node_a", "node_b", "microbetag::weight"]
+    edgelist.columns = ["node_A", "node_B", "microbetag::weight"]
     edgelist_as_a_list_of_dicts = edgelist.to_dict(orient="records")
 
     base_network = {}
@@ -128,7 +128,7 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
 
     for edge in edgelist_as_a_list_of_dicts:
         # Node A
-        node_name_a = edge["node_a"]
+        node_name_a = edge["node_A"]
         is_taxon = False
         if node_name_a in conf.seq_ids:
             is_taxon = True
@@ -138,7 +138,7 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
             nodes.append(node_a)
 
         # Node B
-        node_name_b = edge["node_b"]
+        node_name_b = edge["node_B"]
         is_taxon = False
         if node_name_b in conf.seq_ids:
             is_taxon = True

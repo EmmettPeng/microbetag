@@ -14,6 +14,13 @@ setup(
     url='https://hariszaf.github.io',
     packages=find_packages(include=['microbetag', 'microbetag.*']),
     include_package_data=True,
+
+    entry_points={
+        "console_scripts": [
+            "microbetag = microbetag.microbetag:main",
+        ],
+    },
+
     package_data={
         'microbetag': [
             "mtg_maps_models/*",

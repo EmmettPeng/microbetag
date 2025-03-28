@@ -1,6 +1,9 @@
-"""
-Utils supporting tasks for file parsing and formating
-"""
+# microbetag : a software suite to annotate microbial co-occurrence networks
+
+# Copyright (c) 2025 Haris Zafeiropoulos
+
+# Licensed under GNU LGPL.3, see LICENCE file
+
 import os, re, sys
 import json, csv
 import time
@@ -12,6 +15,7 @@ import logging
 import colorlog
 import pandas as pd
 from typing import List
+
 
 
 # Handling data related
@@ -502,7 +506,10 @@ def extend_complements(complements_json,
 
 
 def extend_faprotax(conf):
-
+    """
+    Parses the sub tables of the faprotax analysis
+    to assign the biological processes related to each sequence id
+    """
     bin_faprotax_traits = {}
     fapro_sub_tables = [os.path.join(conf.faprotax_sub_tables, file) for file in os.listdir(conf.faprotax_sub_tables)]
     for file in fapro_sub_tables:
@@ -612,14 +619,25 @@ def detect_separator(file_path):
 
 
 def find_three_column_format(file_path, delimiter):
+    """
+    Checks if a file is in a three-column format and whether the third column is a float.
+
+    Args:
+        file_path (str): Path to the file to be checked.
+        delimiter (str): The delimiter used to separate columns (e.g., '\t' for tab-separated values).
+
+    Returns:
+        tuple: (line_number, None) if the third column is a float, (line_number, 0) otherwise.
+    """
     with open(file_path, 'r') as f:
         for line_num, line in enumerate(f, start=1):
             # Split by tab and check the number of columns
             columns = line.strip().split(delimiter)
             if len(columns) == 3:
-                if isinstance(columns[-1], float):
+                try:
+                    float(columns[-1])  # Check if conversion to float is possible
                     return line_num, None
-                else:
+                except ValueError:
                     return line_num, 0
     raise ValueError(f"The network file {file_path} is not in the 3-columns format required.")
 

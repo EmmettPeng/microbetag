@@ -20,6 +20,25 @@ Feel free to contact on our [Matrix community](https://matrix.to/#/#microbetagco
 
 
 
+For example, one can easily run the whole microbetag pipeline using the corresponding `config.yml` template to the `microbetag` version to be used, running:
+
+```python
+from microbetag.config import Config
+from microbetag.microbetag import run_microbetag
+
+with open("config.yml", "r") as yaml_file:
+	config = Config(yaml.safe_load(yaml_file), "config.yml")
+
+run_microbetag(config)
+```
+
+```{important}
+Remember that `microbetag` will use all files that have been produced from a previous run, given the output directory stays the same! 
+That means that if you wish to re-calculate a part for any reason, e.g. run FlashWeave again with a different set of parameters, you need to make sure
+that you first **delete** the previous output files of this step! 
+```
+
+
 ## Use `microbetag` API programmatically
 
 One may use the API routes described through Python. 

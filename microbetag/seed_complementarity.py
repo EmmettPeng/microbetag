@@ -18,6 +18,7 @@ from .PhyloMint.lib.CalculateIndexes import calculate_scores, extract_complement
 
 logger = mtg_logger(__name__)
 
+
 class ExportSeedComplementarities:
     """
     Class to  export seed complements.
@@ -59,7 +60,7 @@ class ExportSeedComplementarities:
 
         self.namespace = "modelseed"
         if config.genre_reconstruction_with == "carveme":
-            print("Load bigg2seed map...")
+            logger.info("Load bigg2seed map...")
             self.namespace = "BiGG"
             self.bigg2seed =  bigg_to_seed_mapping_df(config.metanetx_compounds)
 
@@ -68,11 +69,8 @@ class ExportSeedComplementarities:
         self.int_suffix = "c" if self.namespace == "BiGG" else "c0"
         self.compound_prefix = "M"
 
-        print("Load KEGG MODULE related terms..")
-        self.seed_ko_mo = config.seed_ko_mo
-        modules_compounds = pd.read_csv(self.seed_ko_mo, sep="\t")
-        modules_compounds.columns = ["modelseed", "kegg", "module"]
-        self.modelseed_compounds_of_interest = set(modules_compounds["modelseed"].unique().tolist())
+        # self.seed_ko_mo = config.seed_ko_mo
+        self.modelseed_compounds_of_interest = get_kegg_module_related(config.seed_ko_mo)
 
         if self.skip_sets:
 
@@ -106,7 +104,7 @@ class ExportSeedComplementarities:
         ConfidenceDic = dict()
 
         # Get all XML files in directory
-        print("Export seed and non seed sets....")
+        logger.info("Export seed and non seed sets....")
 
         sbml_files = [ os.path.join(self.dir_path, f) for f in os.listdir(self.dir_path) if f.endswith('.xml') ]
         num_threads = min(len(sbml_files), self.threads)
@@ -143,7 +141,7 @@ class ExportSeedComplementarities:
             self._dict_to_pickle(SeedSetDic_serial, self.module_seeds)
             self._dict_to_pickle(nonSeedSetDic_serial, self.module_nonseeds)
 
-        print("Seed and non seed sets have been exported.")
+        logger.info("Seed and non seed sets have been exported.")
 
 
     def get_scores_and_compls(self):
@@ -152,51 +150,48 @@ class ExportSeedComplementarities:
         between the modles under study.
         """
 
-        print("\n\n>>> Exporting seed scores and complementarities...")
+        logger.info("Exporting seed scores and complementarities.")
 
         total_species = self.ConfidenceDic.keys()
-        if len(total_species) < self.perce_save:
-            self.perce_save = len(total_species)
+        self.perce_save = min(len(total_species), self.perce_save)  # Ensure perce_save does not exceed total species count
 
-        lock = multiprocessing.Lock()
-        queue = multiprocessing.Queue()
-        processes = []
-
-        # For shared dict
+        # For multiprocessing
+        lock    = multiprocessing.Lock()
+        queue   = multiprocessing.Queue()
         manager = multiprocessing.Manager()
         shared_compls_dict = manager.dict()  # Shared dictionary for DataFrame
+        processes = []
 
         # Start a separate process for tracking progress
         progress_process = multiprocessing.Process(target=progress_tracker, args=(queue, len(total_species)))
         progress_process.start()
 
-        # Manually spawn processes with a limited number of concurrent threads
-        counter = 1
+        # Batch of processes..
         for i, species in enumerate(total_species):
             if i % self.threads == 0:
                 for process in processes:
-                    process.join()  # Wait for the batch to finish
-                processes = []  # Clear completed processes
+                    process.join()        # Wait for the batch to finish
+                processes = []            # Clear completed processes
 
+            # ..each running ther worker function
             process = multiprocessing.Process(target=self.worker_function, args=(lock, species, queue, shared_compls_dict))
             processes.append(process)
             process.start()
 
-            # Save temporary compls per 1%, 2% etc.
-            if len(total_species) > 100:
-                if i % (len(total_species) // self.perce_save) == 0 and i != 0:
-                    print(f"Progress {i}/{len(total_species)} - Shared dict state: {len(dict(shared_compls_dict))}", file=sys.stderr)
-                    # Wait for the remaining processes to finish
-                    for process in processes:
-                        process.join()
-                    tmp_json = shared_compls_dict.copy()
-                    tmp_dict_serializable = {k: dict(v) for k, v in tmp_json.items()}
-                    with open(f"tmp_cmpls_{counter}.json", "w") as j:
-                        json.dump(tmp_dict_serializable, j)
-                    counter += 1
-                    shared_compls_dict = manager.dict()
+            # Periodically save progress in case of big data -- e.g. updating microbetagDB
+            if len(total_species) > 500 and i % (len(total_species) // self.perce_save) == 0 and i != 0:
 
-        # Wait for the remaining processes to finish
+                print(f"Progress {i}/{len(total_species)} - Shared dict state: {len(shared_compls_dict)}", file=sys.stderr)
+                for process in processes:
+                    process.join()
+
+                # Save temporary progress
+                tmp_dict_serializable = {k: dict(v) for k, v in shared_compls_dict.items()}
+                with open(f"tmp_cmpls_{i // (len(total_species) // self.perce_save)}.json", "w") as j:
+                    json.dump(tmp_dict_serializable, j)
+                shared_compls_dict = manager.dict()  # Reset shared dict after saving
+
+        # Wait for any remaining processes to finish
         for process in processes:
             process.join()
 
@@ -204,80 +199,53 @@ class ExportSeedComplementarities:
         queue.put(None)
         progress_process.join()
 
-        # Ensure inner dictionaries are not lost
-        shared_compls_dict_serial = {k: dict(v) for k, v in shared_compls_dict.items()}
+        # Finalize shared dictionary and convert to DataFrame
+        final_compls_dict = {k: dict(v) for k, v in shared_compls_dict.items()}
+        df = pd.DataFrame.from_dict(final_compls_dict)
 
-        # Make df from dictionary and save it
-        df = pd.DataFrame.from_dict(shared_compls_dict_serial)
-        # NOTE (Haris Zafeiropoulos, 2025-03-25):
-        # Species' complements with itself is NaN; replace with empty list to enable build_mtg_cx2 script
+        # Replace NaN with empty lists for species' complements with itself
         df = df.applymap(lambda x: [] if isinstance(x, float) and pd.isna(x) else x)
 
+        # Save the final DataFrame
         with open(self.seed_complements, "wb") as f:
             pickle.dump(df, f)
 
 
     def scores_and_overlaps_for_a_species(self, species, lock, shared_dict):
         """
-        Get scores and complements for a specific model (species)
+        [NEW] Get scores and complements for a specific model (species)
         """
-
-        # Get pairs with species as A and species as B
-        print(species)
+        # Get species pairs and seedset confidence
         as_beneficiary, _ = generate_fixed_pairwise_comparisons(species, list(self.ConfidenceDic.keys()))
-
-        # Get species seed and non-seed sets
         species_seedset_confidence = self.ConfidenceDic[species]
 
-        # Species as A
-        compls = {}
-        findings = set()
-        for pair in as_beneficiary:
-            partner = pair[1]
-            if partner == species:
-                continue
+        findings, compls = set(), {}
+        species = species.replace(".PATRIC", "")  # Clean species name
 
+        for partner in [pair[1] for pair in as_beneficiary if pair[1] != species]:
             partner_seedset_confidence, nonSeedB = self.ConfidenceDic[partner], self.nonSeedSetDic[partner]
 
-            SeedA = set(species_seedset_confidence.keys())
-            SeedB = set(partner_seedset_confidence.keys())
-            nonSeedB = set(nonSeedB)
+            SeedA, SeedB, nonSeedB = set(species_seedset_confidence.keys()), set(partner_seedset_confidence.keys()), set(nonSeedB)
 
             if self.get_scores:
-
-                MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB = calculate_scores(
-                    SeedA,
-                    species_seedset_confidence,
-                    SeedB,
-                    nonSeedB
-                )
-
-                # Line to print
-                species = species.replace(".PATRIC", "")
-                partner = partner.replace(".PATRIC", "")
-
-                output = f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
-                findings.add(output)
+                MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB = calculate_scores(SeedA, species_seedset_confidence, SeedB, nonSeedB)
+                findings.add(f"{species}\t{partner.replace('.PATRIC', '')}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n")
 
             if self.get_complements:
-
                 B_complememts_to_A = extract_complements(SeedA, nonSeedB)
-
-                # Get only KEGG module - related
                 if self.only_module_related:
-                    B_complememts_to_A = self.kegg_module_related_intersect(B_complememts_to_A)
-                compls[partner]    = B_complememts_to_A
+                    B_complememts_to_A = kegg_module_related_intersect(B_complememts_to_A, self.modelseed_compounds_of_interest)
+                compls[partner] = B_complememts_to_A
 
-        # Update shared dict with KEGG related complements
+        # Update shared dictionary with complements if needed
         if self.get_complements:
             with lock:
-                shared_dict[species] = dict(compls)
+                shared_dict[species] = compls
 
-        # Safely write to the file with a lock
+        # Write findings to file
         if self.get_scores:
             with open(self.scores_outfile, 'a') as f:
-                for r in findings:
-                    f.write(r)
+                f.writelines(findings)
 
 
     def worker_function(self, lock, species, queue, shared_dict):
@@ -285,16 +253,6 @@ class ExportSeedComplementarities:
         self.scores_and_overlaps_for_a_species(species, lock, shared_dict)
         with lock:
             queue.put(1)  # Signal that one task is completed
-
-
-    def kegg_module_related_intersect(self, intersect):
-        """Check if KEGG MODULE related"""
-        intersect = list(intersect)
-        tmp_intersect = intersect.copy()
-        for compl in tmp_intersect:
-            if compl not in self.modelseed_compounds_of_interest:
-                intersect.remove(compl)
-        return intersect
 
 
     def process_sbml(self, sbml_path, maxcc=2):
@@ -347,7 +305,7 @@ class ExportSeedComplementarities:
             for term in (t.rsplit("_", 1)[0] if t.split("_")[-1] in {self.ex_suffix, self.int_suffix} else t for t in terms)
         ]
 
-
+    # TODO (Haris Zafeiropoulos, 2025-03-28): check if this could be a static
     def _strip_pre_suff_from_dict(self, d):
         d_tmp = {}
         for k,v in d.items():
@@ -355,7 +313,7 @@ class ExportSeedComplementarities:
             d_tmp[new_k] = v
         return d_tmp
 
-
+    # TODO (Haris Zafeiropoulos, 2025-03-28): like above
     def _serialize_dic(self, dict, json_file):
 
         dict_serial    = {k: list(v) for k, v in dict.items()}
@@ -368,19 +326,31 @@ class ExportSeedComplementarities:
 
         dict_tmp = {}
         for k,v in dict.items():
-            dict_tmp[k] = [self.kegg_module_related_intersect(v)]
+            dict_tmp[k] = [
+                kegg_module_related_intersect(v, self.modelseed_compounds_of_interest)
+            ]
         df = pd.DataFrame.from_dict(dict_tmp)
         with open(pickle_file, "wb") as f:
             pickle.dump(df.T, f)
 
 
-    # DEPRICATED
-    def _monitor_shared_dict(self, shared_dict):
-        while True:
-            time.sleep(60)  # Adjust frequency as needed
-            print("Current state of shared_dict:", len(dict(shared_dict)))  # Convert to dict for safe printing
-            if getattr(self._monitor_shared_dict, "stop", False):
-                break
+
+
+def kegg_module_related_intersect(intersect, modelseed_compounds_of_interest):
+    """Check if KEGG MODULE related"""
+    intersect = list(intersect)
+    tmp_intersect = intersect.copy()
+    for compl in tmp_intersect:
+        if compl not in modelseed_compounds_of_interest:
+            intersect.remove(compl)
+    return intersect
+
+
+def get_kegg_module_related(seed_ko_mo):
+    """Load map file with KEGG modules and their terms and return a set with all the KOs there"""
+    modules_compounds = pd.read_csv(seed_ko_mo, sep="\t")
+    modules_compounds.columns = ["modelseed", "kegg", "module"]
+    return set(modules_compounds["modelseed"].unique().tolist())
 
 
 def _bigg_to_modelseed(bigg_obj, bigg2seed):
@@ -522,6 +492,6 @@ def build_url_with_seed_complements(seed_complements, nonseeds, kmap, shortener=
     for compound in seed_complements:
         url += compound + complemet_compounds_color
     if shortener is not None:
-        logging.info("Shortening the URL.")
+        logger.info("Shortening the URL.")
         url =  shortener.tinyurl.short(url)
     return url

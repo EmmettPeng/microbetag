@@ -12,7 +12,7 @@ Output:
     - An annotated network in .cx2 format
 """
 
-__version__ = "v1.0.3"
+__version__ = "1.0.3"
 __author__ = "Haris Zafeiropoulos <haris.zafeiropoulos@kuleuven.be>"
 
 import os, sys
@@ -25,7 +25,7 @@ from .tools import *
 from .config import Config
 from .genres import GEMSReconstruction
 from .helpers import manta_input_net
-from .build_mtg_cx2 import build_pseudo_cx, build_ndex2_net
+from .build_mtg_cx2 import mtg_annotate_network
 from .pathway_complementarity import export_pathway_complementarities
 
 
@@ -204,7 +204,6 @@ def run_microbetag(config):
         logger.info("[STEP] COMPUTING SEED SETS AND SCORES")
         run_seed_complementarity(config)
 
-
     # ----------------
     # Network clustering
     # ----------------
@@ -228,17 +227,11 @@ def run_microbetag(config):
     # ----------------
     if config.precalc_only is False:
         logger.info("[STEP] ANNOTATE NETWORK ")
-        annotated_network = build_pseudo_cx(config)
-        with open(config.microbetag_annotated_network_file, "w") as f:
-                annotated_network2file = convert_to_json_serializable(annotated_network)
-                json.dump(annotated_network2file, f)
-                logger.info("A microbetag-annotated network in .cx format was built sucessfully.")
+        mtg_annotate_network(config)
 
-        # Build cx2 with ndex2 library
-        if build_ndex2_net(config.microbetag_annotated_network_file):
-            # os.remove(config.microbetag_annotated_network_file)
-            logger.info("The pseudo .cx file was converted to CX2 through NDEx successfully.")
-
+    # ----------------
+    # Keep arguments
+    # ----------------
     config.export_to_log()
     logger.info("A parameters.log file with the parameters used in this run was built.")
 

@@ -1,3 +1,8 @@
+# microbetag : a software suite to annotate microbial co-occurrence networks
+
+# Copyright (c) 2025 Haris Zafeiropoulos
+
+# Licensed under GNU LGPL.3, see LICENCE file
 
 import os
 import logging
@@ -8,6 +13,7 @@ from .utils import resolve_file_path, detect_separator, mtg_logger
 
 
 logger = mtg_logger(__name__)
+
 
 def load_abundance(abd_file):
     """
@@ -106,13 +112,14 @@ class Config:
             self.seq_ids = self.seq_to_taxon_df["sequence_id"].unique().tolist()
 
         elif self.abundance_table is None and self.network:
-            # delimiter = detect_separator(self.sequence_taxonomy_map)
+
             seq_to_taxon_df = pd.read_csv(self.sequence_taxonomy_map, sep=self.delimiter)
             seq_to_taxon_df.columns = ["sequence_id", "taxonomy"]
             self.seq_to_taxon_df = seq_to_taxon_df
             self.seq_ids = self.seq_to_taxon_df["sequence_id"].unique().tolist()
 
         elif self.abundance_table and self.network:
+
             # NOTE: Not all sequence ids in the seq_ids need to have a taxonomy in this case -- only those coming from the abundance table
             # Yet, in case that the network has taxa not present in the abundance table, apparently it will lead to errors.
             network_df = get_edgelist(self)
