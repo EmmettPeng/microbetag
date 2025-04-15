@@ -1,59 +1,71 @@
-
 import os
-import yaml
 import unittest
-from microbetag.config import Config
-from microbetag.seed_complementarity import ExportSeedComplementarities
+
+from microbetag.tools import run_seed_complementarity
+from microbetag.helpers import MappingPaths
+
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# root_dir = os.path.dirname(os.getcwd())
-test_data = os.path.join(root_dir, "test_data", "test_seed_compl")
+test_data = os.path.join(root_dir, "test_data/test_seed_compl")
+
+models_dir = os.path.join(
+    root_dir, "test_data/test_carve/output_files/reconstructions/GENREs/"
+)
+
 output_dir = os.path.join(test_data, "output_files")
+previous_confidence = os.path.join(output_dir, "confidenceDic.json")
+previous_nonseeds = os.path.join(output_dir, "nonSeedSetDic.json")
 
-config_file = os.path.join(test_data, "config_v103_test_seed_compl.yml")
-with open(config_file, 'r') as yaml_file:
-    config = Config(yaml.safe_load(yaml_file), config_file)
-
-
-
-seed_complements = ExportSeedComplementarities(config)
-
-seed_complements.map_carveme_seeds()
-
-seed_complements.module_related_seeds()
-
-seed_complements.export_seed_complements()
+maps = MappingPaths()
 
 
-# class TestSeedComplementarity(unittest.TestCase):
+class Config:
+
+    def __init__(self):
+        # If False, then microbetag should have built GENREs before running run_seed_complementarity()
+        # To use the run_seed_complementarity() on its own, this would have to be always True
+        self.users_models = True
+
+        # Directory where GENREs are stored
+        self.genres = self.for_reconstructions = models_dir
+
+        # Directory where to save seed complementarity - related files
+        self.seeds = output_dir
+        self.seed_complements = os.path.join(output_dir, "seed_complements.pckl")
+        self.module_seeds = os.path.join(self.seeds, "kegg_module_related_seeds.pckl")
+        self.module_nonseeds = os.path.join(
+            self.seeds, "kegg_module_related_nonseeds.pckl"
+        )
+
+        self.threads = 2
+        self.seed_ko_mo = maps.seed_ko_mo
+        self.genre_reconstruction_with = "carveme"
+        self.metanetx_compounds = maps.metanetx_compounds
+
+        self.skip_sets = False
+        self.prev_conf = None
+        self.prev_nonseeds = None
 
 
-#     @classmethod
-#     def setUpClass(cls):
+class TestSeedComplementarity(unittest.TestCase):
 
-#         cls.config = config
+    @classmethod
+    def setUpClass(cls):
+        cls.config = Config()
 
+    def test1WihtoutSets(self):
 
-#     def TestWithCarvemeModels(self):
+        run_seed_complementarity(config=self.config)
 
-#         seed_complements = ExportSeedComplementarities(self.config)
-#         print("...... wtf")
-#         seed_complements.update()
+    def test2WithUsersModelsAndSets(self):
 
-#         print("updated ok")
+        self.config.skip_sets = True
+        self.config.prev_conf = previous_confidence
+        self.config.prev_nonseeds = previous_nonseeds
 
-#         seed_complements.map_carveme_seeds()
-
-#         seed_complements.module_related_seeds()
-
-#         seed_complements.export_seed_complements()
+        run_seed_complementarity(config=self.config)
 
 
+if __name__ == "__main__":
 
-
-# if __name__ == "__main__":
-
-
-    # unittest.main()
-
-
+    unittest.main()
