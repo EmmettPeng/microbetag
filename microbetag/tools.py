@@ -7,8 +7,12 @@ import multiprocessing
 from typing import List
 
 from .utils import (
-    get_files_with_suffixes, get_library_version, get_tool_location,
-    ensure_flashweave_format, ensure_same_namespace_after_fw, mtg_logger
+    get_files_with_suffixes,
+    get_library_version,
+    get_tool_location,
+    ensure_flashweave_format,
+    ensure_same_namespace_after_fw,
+    mtg_logger,
 )
 
 from .seed_complementarity import ExportSeedComplementarities
@@ -16,18 +20,19 @@ from .seed_complementarity import ExportSeedComplementarities
 
 logger = mtg_logger(__name__)
 
+
 def run_seed_complementarity(config):
     """
     Invoke PhyloMInt as edited from microbetag team to support parallel calculation of the seed and non seed sets
     and save corresponding sets to json files.
     """
-    config.skip_sets = True
+
     if config.prev_conf is None or os.path.exists(config.prev_conf) is False:
         config.skip_sets = False
         if config.users_models:
             genre_files = [
                 os.path.join(config.for_reconstructions, file)
-                    for file in os.listdir(config.for_reconstructions)
+                for file in os.listdir(config.for_reconstructions)
             ]
             for file in genre_files:
                 dest_path = os.path.join(config.genres, os.path.basename(file))
@@ -47,9 +52,11 @@ def run_seed_complementarity(config):
 
     phylomint = ExportSeedComplementarities(config)
 
+    # If no seed and/or non-seed sets are missing, get them
     if phylomint.skip_sets is False:
         phylomint.get_sets()
 
+    # If either the phylomint scores file or the one with the seed complementarities (pckl) is missing, exract them
     if phylomint.get_scores or phylomint.get_complements:
         phylomint.get_scores_and_compls()
 
@@ -60,21 +67,22 @@ def hmmsearch(params: List):
 
     params: list of parameters to be passed to the hmmsearch function.
     """
-    (
-        threshold_method, threshold, outtype, output, hmm_db, faa
-    ) = params
+    (threshold_method, threshold, outtype, output, hmm_db, faa) = params
 
     cmd_para = [
-        'hmmsearch',
-        threshold_method, threshold,
-        '--cpu', '1',
-        '-o /dev/null',
-        outtype, output,
+        "hmmsearch",
+        threshold_method,
+        threshold,
+        "--cpu",
+        "1",
+        "-o /dev/null",
+        outtype,
+        output,
         hmm_db,
-        faa
+        faa,
     ]
 
-    cmd = ' '.join(cmd_para)
+    cmd = " ".join(cmd_para)
 
     try:
         os.system(cmd)
@@ -90,21 +98,27 @@ def run_prodigal(fasta, basename, outdir):
     ffn	FASTA nucleotide of gene regions	Contains coding regions for a genome
     """
 
-    faa_file = os.path.join(outdir, basename + '.faa')
-    ffn_file = os.path.join(outdir, basename + '.ffn')
-    fna_file = os.path.join(outdir, basename + '.fna')
-    gbk_file = os.path.join(outdir, basename + '.gbk')
+    faa_file = os.path.join(outdir, basename + ".faa")
+    ffn_file = os.path.join(outdir, basename + ".ffn")
+    fna_file = os.path.join(outdir, basename + ".fna")
+    gbk_file = os.path.join(outdir, basename + ".gbk")
 
     PRODIGAL = get_tool_location("prodigal")
     cmd_para = [
-                PRODIGAL, '-q',
-                '-i', fasta,
-                '-p', 'meta',
-                '-a', faa_file,
-                '-d', ffn_file,
-                '-o', gbk_file
-                ]
-    cmd = ' '.join(cmd_para)
+        PRODIGAL,
+        "-q",
+        "-i",
+        fasta,
+        "-p",
+        "meta",
+        "-a",
+        faa_file,
+        "-d",
+        ffn_file,
+        "-o",
+        gbk_file,
+    ]
+    cmd = " ".join(cmd_para)
     if os.path.exists(faa_file) or os.path.exists(fna_file) or os.path.exists(ffn_file):
         logger.info("ORFs already predicted for bin: %s", basename)
     else:
@@ -129,38 +143,40 @@ def kegg_annotation(faa, basename, out_dir, db_dir, ko_dic, threads):
         ko_dic (Dict):
         threads (int): Number of threads to be used
     """
-    logger.info('KEGG annotation for %s', basename)
+    logger.info("KEGG annotation for %s", basename)
     params = []
 
     if not os.path.exists(faa):
-        logger.warn(f"A .faa file for {basename} is not availavle. microbetag will skip it.")
+        logger.warn(
+            f"A .faa file for {basename} is not availavle. microbetag will skip it."
+        )
         return False
 
     for knum, info in ko_dic.items():
 
         # Check if hmmout for particular KO of a certain bin is already there
-        hmmout_filename = ".".join([knum, str(basename), 'hmmout'])
+        hmmout_filename = ".".join([knum, str(basename), "hmmout"])
         output = os.path.join(out_dir, basename, hmmout_filename)
         if os.path.exists(output):
             continue
 
         # Get hmm for KO under consideration
-        hmm_db = os.path.join(db_dir, 'profiles', knum + '.hmm')
+        hmm_db = os.path.join(db_dir, "profiles", knum + ".hmm")
         if not os.path.exists(hmm_db):
             continue
 
         # Set params for hmmsearch based on the ko_list annotation
-        if info[1] == 'full':
-            threshold_method = '-T'
-            outtype = '--tblout'
+        if info[1] == "full":
+            threshold_method = "-T"
+            outtype = "--tblout"
 
-        elif info[1] == 'domain':
-            threshold_method = '--domT'
-            outtype = '--domtblout'
+        elif info[1] == "domain":
+            threshold_method = "--domT"
+            outtype = "--domtblout"
 
-        elif info[1] == 'custom':
-            threshold_method = '-E'
-            outtype = '--tblout'
+        elif info[1] == "custom":
+            threshold_method = "-E"
+            outtype = "--tblout"
 
         params.append((threshold_method, info[0], outtype, output, hmm_db, faa))
 
@@ -194,7 +210,7 @@ def phenotrex_genotype(config):
             config.genotypes_file,
             "--threads",
             str(config.threads),
-            bin_files_in_a_row
+            bin_files_in_a_row,
         ]
         # Container - case
         if config.cwd == "/microbetag":
@@ -231,18 +247,21 @@ def phenotrex_genotype(config):
 
 
 def phenotrex_predict(config):
-    """
-    """
+    """ """
     import subprocess
+
     # Get predictions
-    phen_models = [os.path.join(config.phen_classes, model) for model in os.listdir(config.phen_classes)]
+    phen_models = [
+        os.path.join(config.phen_classes, model)
+        for model in os.listdir(config.phen_classes)
+    ]
 
     # Parse through the phen models (classes)
     for model in phen_models:
-        model_name =  os.path.basename(model)
-        model_predictions_output = "".join([
-            config.predictions_path, "/", model_name[:-4], ".prediction.tsv"
-        ])
+        model_name = os.path.basename(model)
+        model_predictions_output = "".join(
+            [config.predictions_path, "/", model_name[:-4], ".prediction.tsv"]
+        )
 
         # Skip if predictions already computed
         if os.path.exists(model_predictions_output):
@@ -265,7 +284,7 @@ def phenotrex_predict(config):
                 "--min_proba",
                 str(config.min_proba),
                 "--verb >",
-                model_predictions_output
+                model_predictions_output,
             ]
 
             predict_trait_command = " ".join(predict_traits_params)
@@ -278,7 +297,9 @@ def phenotrex_predict(config):
 
     # If no predictions file is present for any classes, probably something went off.
     if not any(glob.glob(os.path.join(config.predictions_path, "*.prediction.tsv"))):
-        logger.error("No prediction was able to be retrieved with phenotrex. Check your input files.")
+        logger.error(
+            "No prediction was able to be retrieved with phenotrex. Check your input files."
+        )
         sys.exit(0)
 
     # IN CASE OF CONTAINER CONSIDER..
@@ -289,15 +310,19 @@ def phenotrex_predict(config):
 
 def run_manta(config):
     import time
+
     # Build the manta command
     logger.info("Running manta clustering algorithm.")
-    manta_output_file = "/".join([config.output_dir, 'manta_annotated'])
+    manta_output_file = "/".join([config.output_dir, "manta_annotated"])
     manta_params = [
         "manta",
-        "-i", config.base_network_file,
-        "-f", "cyjs",
-        "-o", manta_output_file,
-        "--layout"
+        "-i",
+        config.base_network_file,
+        "-f",
+        "cyjs",
+        "-o",
+        manta_output_file,
+        "--layout",
     ]
     manta_command = " ".join(manta_params)
 
@@ -331,20 +356,24 @@ def run_flashweave(config):
 
     # Run FlashWeave
     from julia.api import Julia
+
     logger.info("Fix FlashWeave arguments from config.")
     pair_args = set()
     for arg, values in config.flashweave_args.items():
         if values["required"]:
             if isinstance(values["value"], bool):
-                pair_args.add( ( arg, str(values["value"]).lower()) )
+                pair_args.add((arg, str(values["value"]).lower()))
             else:
-                logger.error(f'You need to provide values for "{arg}" argument of FlashWeave.') ; sys.exit(0)
+                logger.error(
+                    f'You need to provide values for "{arg}" argument of FlashWeave.'
+                )
+                sys.exit(0)
         else:
             if values["value"] is not None:
                 if values["type"] == "Bool":
-                    pair_args.add( (arg, str(values["value"]).lower()) )
+                    pair_args.add((arg, str(values["value"]).lower()))
                 else:
-                    pair_args.add( (arg, values["value"]) )
+                    pair_args.add((arg, values["value"]))
 
     pair_args.add(("transposed", "true"))
     learn_in = ",".join(f"{arg[0]}={arg[1]}" for arg in pair_args)
@@ -359,33 +388,48 @@ def run_flashweave(config):
         logger.info(
             f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", "{config.metadata_file}", {learn_in}))'
         )
-        jl.eval(f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", "{config.metadata_file}", {learn_in}))')
+        jl.eval(
+            f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", "{config.metadata_file}", {learn_in}))'
+        )
     else:
         logger.info("Running FlashWeaeve.")
         logger.info(
             f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", {learn_in}))'
         )
-        jl.eval(f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", {learn_in}))')
+        jl.eval(
+            f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", {learn_in}))'
+        )
 
     ensure_same_namespace_after_fw(config)
 
 
 def run_faprotax(config):
-    """ Run FAPROTAX collapse_table.py script """
+    """Run FAPROTAX collapse_table.py script"""
     faprotax_params = [
-        "python3", config.faprotax_script,
-        "-i", config.abundance_table,
-        "-o", config.faprotax_funct_table,
-        "-g", config.faprotax_txt,
-        "-c", '"' + "#" + '"',
-        "-d", '"' + config.taxonomy_column_name + '"',
+        "python3",
+        config.faprotax_script,
+        "-i",
+        config.abundance_table,
+        "-o",
+        config.faprotax_funct_table,
+        "-g",
+        config.faprotax_txt,
+        "-c",
+        '"' + "#" + '"',
+        "-d",
+        '"' + config.taxonomy_column_name + '"',
         "-v",
         "--force",
-        "-s", config.faprotax_sub_tables,
+        "-s",
+        config.faprotax_sub_tables,
     ]
     faprotax_command = " ".join(faprotax_params)
     try:
-        process = subprocess.Popen(faprotax_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(
+            faprotax_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         stdout, stderr = process.communicate()
     except:
-        raise TypeError(f"Something went wrong when running FAPROTAX with your abuandance table: {config.abundance_table}")
+        raise TypeError(
+            f"Something went wrong when running FAPROTAX with your abuandance table: {config.abundance_table}"
+        )
