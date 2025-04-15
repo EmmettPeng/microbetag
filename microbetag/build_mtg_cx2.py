@@ -19,16 +19,20 @@ from .utils import (
     mtg_logger,
     load_phenotypic_traits,
     extend_faprotax,
-    extend_complements
+    extend_complements,
 )
-from .seed_complementarity import load_seed_complement_files, build_url_with_seed_complements
+from .seed_complementarity import (
+    load_seed_complement_files,
+    build_url_with_seed_complements,
+)
 
 
 logger = mtg_logger(__name__)
 COMPLEMENTARITY_TYPE, COMPLEMENTING = "complementarity", "(completed by)"
-COOCCURENCE_DEPLETION     = "cooccurrence/depletion"
+COOCCURENCE_DEPLETION = "cooccurrence/depletion"
 COOCCURRENCE, COOCCURYING = "cooccurrence", "(cooccurs with)"
-DEPLETION, DEPLETING      = "depletion", "(depletes)"
+DEPLETION, DEPLETING = "depletion", "(depletes)"
+
 
 # -----------------------------
 # NODES
@@ -41,16 +45,15 @@ def taxonomy_levels(node):
 
     """
     try:
-        if len(node["v"]["microbetag::taxonomy"].split(";") ) == 7:
+        if len(node["v"]["microbetag::taxonomy"].split(";")) == 7:
             (
                 node["v"]["taxonomy::domain"],
                 node["v"]["taxonomy::phylum"],
                 node["v"]["taxonomy::class"],
-                node["v"]["taxonomy::oder"],
+                node["v"]["taxonomy::order"],
                 node["v"]["taxonomy::family"],
                 node["v"]["taxonomy::genus"],
-                node["v"]["taxonomy::species"]
-
+                node["v"]["taxonomy::species"],
             ) = node["v"]["microbetag::taxonomy"].split(";")
     except:
         pass
@@ -189,10 +192,13 @@ def update_with_manta(config, nodes, node_names):
 
     return manta_layout
 
+
 # -----------------------------
 # EDGES - PATHWAY COMPLEMENTARITY
 # -----------------------------
-def pathway_complement_edge(edge_id, beneficiary, donor, complement, node_names, update=False, cx_edges=None):
+def pathway_complement_edge(
+    edge_id, beneficiary, donor, complement, node_names, update=False, cx_edges=None
+):
     """
     Creates an edge representing pathway complementarity between a donor and a beneficiary.
 
@@ -219,20 +225,17 @@ def pathway_complement_edge(edge_id, beneficiary, donor, complement, node_names,
             "t": node_names.index(beneficiary),  # Target (beneficiary)
             "v": {
                 "interaction type": COMPLEMENTARITY_TYPE,
-                "shared name": f"{beneficiary} {COMPLEMENTING} {donor}"
+                "shared name": f"{beneficiary} {COMPLEMENTING} {donor}",
             },
         }
 
     column = f"compl::{beneficiary}:{donor}"
-    edge["v"].update({
-        column: _hat_complement(complement)
-    })
+    edge["v"].update({column: _hat_complement(complement)})
     return edge
 
 
 def _hat_complement(complements):
-    """
-    """
+    """ """
     hat_compl = []
     for compl in complements.values():
         hat_compl.append("^".join(compl))
@@ -246,7 +249,16 @@ def _get_edge_id(beneficiary, donor, node_names, edges, interaction_type):
 
     """
     target, source = node_names.index(beneficiary), node_names.index(donor)
-    edge = next((e for e in edges if e["s"] == source and e["t"] == target and e["v"]["interaction type"] == interaction_type), None)
+    edge = next(
+        (
+            e
+            for e in edges
+            if e["s"] == source
+            and e["t"] == target
+            and e["v"]["interaction type"] == interaction_type
+        ),
+        None,
+    )
     return (edges.index(edge), True) if edge is not None else (len(edges) + 1, False)
 
 
@@ -271,20 +283,31 @@ def pathway_complements(config, edgelist_df, node_names, cx_edges):
 
     for record in edgelist_df.iterrows():
 
-        _, link           = record
+        _, link = record
         node_a, node_b, _ = link
 
         if node_a in nodes_in_compls_dict and node_b in nodes_in_compls_dict:
 
             for beneficiary, donor in [(node_a, node_b), (node_b, node_a)]:
 
-                edge_id, update = _get_edge_id(beneficiary, donor, node_names, cx_edges, COMPLEMENTARITY_TYPE)
+                edge_id, update = _get_edge_id(
+                    beneficiary, donor, node_names, cx_edges, COMPLEMENTARITY_TYPE
+                )
 
                 complement = complements_dict[beneficiary][donor]
 
-                pe = pathway_complement_edge(edge_id, beneficiary, donor, complement, node_names, update, cx_edges)
+                pe = pathway_complement_edge(
+                    edge_id,
+                    beneficiary,
+                    donor,
+                    complement,
+                    node_names,
+                    update,
+                    cx_edges,
+                )
 
                 _update_or_append(cx_edges, edge_id, pe, update)
+
 
 # -----------------------------
 # EDGES - SEED COMPLEMENTARITY
@@ -295,22 +318,44 @@ def _verbose_seed_complement(complements, beneficiarys_nonseed, kmap, shortener)
     id_x:
     id_y:
     """
-    maps_in         = list(kmap[kmap['modelseed'].isin(complements)]["map"].unique())
-    complements_map = kmap[kmap['modelseed'].isin(complements)]
-    beneficiarys_nonseeds_map = kmap[kmap['modelseed'].isin(beneficiarys_nonseed)]
+    maps_in = list(kmap[kmap["modelseed"].isin(complements)]["map"].unique())
+    complements_map = kmap[kmap["modelseed"].isin(complements)]
+    beneficiarys_nonseeds_map = kmap[kmap["modelseed"].isin(beneficiarys_nonseed)]
 
     complements_verbose = [
         [
-            kmap.loc[kmap["map"] == kegg_map, "category"].unique().item(),                           # KEGG metabolism category
-            kmap.loc[kmap["map"] == kegg_map, "description"].unique().item(),                        # category description
-            ";".join(set(complements_map.loc[complements_map["map"] == kegg_map, "modelseed"])),     # seed coomplements in modelseed
-            ";".join(set(complements_map.loc[complements_map["map"] == kegg_map, "kegg_compound"])), # seed complements in kegg
-            build_url_with_seed_complements(                                                         # URL
-                list(complements_map.loc[complements_map["map"] == kegg_map, "kegg_compound"]),
-                list(beneficiarys_nonseeds_map.loc[beneficiarys_nonseeds_map["map"] == kegg_map, "kegg_compound"]),
+            kmap.loc[kmap["map"] == kegg_map, "category"]
+            .unique()
+            .item(),  # KEGG metabolism category
+            kmap.loc[kmap["map"] == kegg_map, "description"]
+            .unique()
+            .item(),  # category description
+            ";".join(
+                set(
+                    complements_map.loc[complements_map["map"] == kegg_map, "modelseed"]
+                )
+            ),  # seed coomplements in modelseed
+            ";".join(
+                set(
+                    complements_map.loc[
+                        complements_map["map"] == kegg_map, "kegg_compound"
+                    ]
+                )
+            ),  # seed complements in kegg
+            build_url_with_seed_complements(  # URL
+                list(
+                    complements_map.loc[
+                        complements_map["map"] == kegg_map, "kegg_compound"
+                    ]
+                ),
+                list(
+                    beneficiarys_nonseeds_map.loc[
+                        beneficiarys_nonseeds_map["map"] == kegg_map, "kegg_compound"
+                    ]
+                ),
                 kegg_map,
-                shortener
-            )
+                shortener,
+            ),
         ]
         for kegg_map in maps_in
     ]
@@ -321,9 +366,16 @@ def _verbose_seed_complement(complements, beneficiarys_nonseed, kmap, shortener)
 
 
 def seed_complement_edge(
-    edge_id, beneficiary, donor, complement, competition, cooperation, node_names,
-    update=False, cx_edges=None
-    ):
+    edge_id,
+    beneficiary,
+    donor,
+    complement,
+    competition,
+    cooperation,
+    node_names,
+    update=False,
+    cx_edges=None,
+):
     """
     Conceptually, the donor is the source, since a compound would be secreted from it and drive to the beneficiary (target)
     his holds for the scores as well - for node_A in scores, we consider its seeds. Thus, the A of the score should be the beneficiary, i.e. target
@@ -339,28 +391,31 @@ def seed_complement_edge(
             "t": node_names.index(beneficiary),
             "v": {
                 "interaction type": COMPLEMENTARITY_TYPE,
-                "shared name": f"{beneficiary} {interacting} {donor}"
-            }
+                "shared name": f"{beneficiary} {interacting} {donor}",
+            },
         }
 
     # Edge attributes
     column = f"seedCompl::{beneficiary}:{donor}"
-    edge["v"].update({
-        column: complement,
-        "seed::competition": competition,
-        "seed::cooperation": cooperation
-    })
+    edge["v"].update(
+        {
+            column: complement,
+            "seed::competition": competition,
+            "seed::cooperation": cooperation,
+        }
+    )
 
     return edge
 
 
 def seed_complements(config, edgelist_df, node_names, cx_edges):
 
-
     shortener = pyshorteners.Shortener() if config.tinyurl else None
-    kmap      = load_seed_complement_files(config.kegg_mappings)
+    kmap = load_seed_complement_files(config.kegg_mappings)
 
-    seed_scores         = pd.read_csv(config.phylomint_scores, sep="\t", header=None, skiprows=1)
+    seed_scores = pd.read_csv(
+        config.phylomint_scores, sep="\t", header=None, skiprows=1
+    )
     seed_scores.columns = ["A", "B", "Competition", "Complementarity"]
 
     # NOTE (Haris Zafeiropoulos, 2025-03-26):
@@ -371,33 +426,48 @@ def seed_complements(config, edgelist_df, node_names, cx_edges):
     with open(config.seed_complements, "rb") as f:
         seed_complements = pickle.load(f)
 
-    seed_complements_dict     = seed_complements.to_dict(orient="index")
+    seed_complements_dict = seed_complements.to_dict(orient="index")
     nodes_in_seed_compls_dict = set(seed_complements_dict.keys())
-
 
     for record in edgelist_df.iterrows():
 
-        _, link           = record
+        _, link = record
         node_a, node_b, _ = link
 
         if node_a in nodes_in_seed_compls_dict and node_b in nodes_in_seed_compls_dict:
 
             for beneficiary, donor in [(node_a, node_b), (node_b, node_a)]:
 
-                edge_id, update = _get_edge_id(beneficiary, donor, node_names, cx_edges, COMPLEMENTARITY_TYPE)
+                edge_id, update = _get_edge_id(
+                    beneficiary, donor, node_names, cx_edges, COMPLEMENTARITY_TYPE
+                )
 
-                scores = seed_scores.query('A == @beneficiary and B == @donor')
+                scores = seed_scores.query("A == @beneficiary and B == @donor")
                 if not scores.empty:
-                    competAB, cooperAB = scores.iloc[0][["Competition", "Complementarity"]]
+                    competAB, cooperAB = scores.iloc[0][
+                        ["Competition", "Complementarity"]
+                    ]
                 else:
                     competAB, cooperAB = None, None  # or suitable defaults
 
-                seed_complementAB    = seed_complements_dict[beneficiary][donor]
+                seed_complementAB = seed_complements_dict[beneficiary][donor]
                 beneficiarys_nonseed = non_seed_sets.loc[beneficiary].to_list()[0]
 
-                seed_complementAB = _verbose_seed_complement(seed_complementAB, beneficiarys_nonseed, kmap, shortener)
+                seed_complementAB = _verbose_seed_complement(
+                    seed_complementAB, beneficiarys_nonseed, kmap, shortener
+                )
 
-                se =  seed_complement_edge(edge_id, beneficiary, donor, seed_complementAB, competAB, cooperAB, node_names, update, cx_edges)
+                se = seed_complement_edge(
+                    edge_id,
+                    beneficiary,
+                    donor,
+                    seed_complementAB,
+                    competAB,
+                    cooperAB,
+                    node_names,
+                    update,
+                    cx_edges,
+                )
 
                 _update_or_append(cx_edges, edge_id, se, update)
 
@@ -424,26 +494,30 @@ def build_cx2(nodes, edges):
         attributes = edge["v"].copy()
 
         if attributes["interaction type"] in ["depletion", "cooccurrence"]:
-            attributes['microbetag::weight'] = float(edge["v"]['microbetag::weight'])
+            attributes["microbetag::weight"] = float(edge["v"]["microbetag::weight"])
 
-        filtered_attributes = {key: value for key, value in attributes.items() if not (isinstance(value, list) and len(value) == 0)}
+        filtered_attributes = {
+            key: value
+            for key, value in attributes.items()
+            if not (isinstance(value, list) and len(value) == 0)
+        }
 
         # create an edge connecting the nodes, id of edge is returned
-        _ = net_cx.add_edge(source=source, target=target, attributes=filtered_attributes)
+        _ = net_cx.add_edge(
+            source=source, target=target, attributes=filtered_attributes
+        )
 
     return net_cx
 
 
 def mtg_annotate_network(config):
 
-
     edgelist_df = get_edgelist(config)
 
     # e.g.  'bin_31': 'd__Bacteria;p__Proteobacteria;c__Alphaproteobacteria;o__Reyranellales;f__Reyranellaceae;g__Reyranella;s__',
     seq_id_to_taxonomy_dic = config.seq_to_taxon_df.set_index(
         config.seq_to_taxon_df.columns[0]
-    )[ config.seq_to_taxon_df.columns[1] ].to_dict()
-
+    )[config.seq_to_taxon_df.columns[1]].to_dict()
 
     nodes, node_names, edges = init_nodes_and_edges(edgelist_df, seq_id_to_taxonomy_dic)
 
@@ -464,10 +538,8 @@ def mtg_annotate_network(config):
 
     net_cx = build_cx2(nodes, edges)
 
-
     timepoint = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     graphml_file = os.path.join(config.output_dir, f"mtag_net_{timepoint}.cx2")
 
-    net_cx.set_network_attributes({'name': 'microbetag annotated network'})
+    net_cx.set_network_attributes({"name": "microbetag annotated network"})
     net_cx.write_as_raw_cx2(graphml_file)
-

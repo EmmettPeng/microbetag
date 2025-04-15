@@ -11,7 +11,6 @@ from .networks import get_edgelist
 from .utils import resolve_file_path, detect_separator, mtg_logger
 
 
-
 logger = mtg_logger(__name__)
 
 
@@ -32,10 +31,12 @@ def load_abundance(abd_file):
     seq_id_to_taxonomy.columns = ["sequence_id", "taxonomy"]
     return seq_id_to_taxonomy, sequence_id_column_name, taxonomy_column_name, delimiter
 
+
 class Config:
     """
     Parses a microbetag configuration file (yaml) to init a microbetag run.
     """
+
     def __init__(self, conf, config_file):
 
         # Pass loaded yaml object
@@ -79,22 +80,38 @@ class Config:
 
         # Edgelist of provided network
         edge_list = conf.get("edge_list", {}).get("file_path")
-        self.network = resolve_file_path(self.base_dir, edge_list)  #os.path.join(self.base_dir, edge_list) if edge_list else None
+        self.network = resolve_file_path(
+            self.base_dir, edge_list
+        )  # os.path.join(self.base_dir, edge_list) if edge_list else None
 
         # NOTE: Setting precalculations only as true allows to get a Config instance
         # without providing an abundance table or network, meaning you can use the Config instance
         # for partial/specific tasks of microbetag.
         precalc_only = conf.get("precalulations_only").get("value")
-        self.precalc_only = precalc_only if precalc_only in [0,1] else False
+        self.precalc_only = precalc_only if precalc_only in [0, 1] else False
 
-        if self.abundance_table is None and self.network is None and precalc_only is False:
-            raise ValueError(f"You need to provide at least one between an abundance table and a network's edgelist in 3-column format.")
+        if (
+            self.abundance_table is None
+            and self.network is None
+            and precalc_only is False
+        ):
+            raise ValueError(
+                f"You need to provide at least one between an abundance table and a network's edgelist in 3-column format."
+            )
 
         # IMPORTANT: Sequence to taxonomy map -- required if no abundance table is needed
-        sequence_taxonomy_map = conf.get("sequence_id_taxonomy_map", {}).get("file_path")
-        self.sequence_taxonomy_map = resolve_file_path(self.base_dir, sequence_taxonomy_map)
+        sequence_taxonomy_map = conf.get("sequence_id_taxonomy_map", {}).get(
+            "file_path"
+        )
+        self.sequence_taxonomy_map = resolve_file_path(
+            self.base_dir, sequence_taxonomy_map
+        )
 
-        if self.abundance_table is None and self.sequence_taxonomy_map is None and precalc_only is False:
+        if (
+            self.abundance_table is None
+            and self.sequence_taxonomy_map is None
+            and precalc_only is False
+        ):
             raise ValueError(
                 f"Since an abundance table is not provided, you need to provide a 2-column file with the sequence id (e.g bin ids)"
                 "and their corresponding taxonomy or taxon name."
@@ -106,14 +123,16 @@ class Config:
                 self.seq_to_taxon_df,
                 self.sequence_id_column_name,
                 self.taxonomy_column_name,
-                self.delimiter
+                self.delimiter,
             ) = load_abundance(self.abundance_table)
 
             self.seq_ids = self.seq_to_taxon_df["sequence_id"].unique().tolist()
 
         elif self.abundance_table is None and self.network:
 
-            seq_to_taxon_df = pd.read_csv(self.sequence_taxonomy_map, sep=self.delimiter)
+            seq_to_taxon_df = pd.read_csv(
+                self.sequence_taxonomy_map, sep=self.delimiter
+            )
             seq_to_taxon_df.columns = ["sequence_id", "taxonomy"]
             self.seq_to_taxon_df = seq_to_taxon_df
             self.seq_ids = self.seq_to_taxon_df["sequence_id"].unique().tolist()
@@ -123,13 +142,17 @@ class Config:
             # NOTE: Not all sequence ids in the seq_ids need to have a taxonomy in this case -- only those coming from the abundance table
             # Yet, in case that the network has taxa not present in the abundance table, apparently it will lead to errors.
             network_df = get_edgelist(self)
-            net_seq_ids = pd.concat([network_df.iloc[:, 0], network_df.iloc[:, 1]]).unique().tolist()
+            net_seq_ids = (
+                pd.concat([network_df.iloc[:, 0], network_df.iloc[:, 1]])
+                .unique()
+                .tolist()
+            )
 
             (
                 self.seq_to_taxon_df,
                 self.sequence_id_column_name,
                 self.taxonomy_column_name,
-                self.delimiter
+                self.delimiter,
             ) = load_abundance(self.abundance_table)
 
             abd_seq_ids = self.seq_to_taxon_df["sequence_id"].unique().tolist()
@@ -150,7 +173,7 @@ class Config:
 
         # Get pathway complementarity related variables
         pcompl = conf.get("pathway_complementarity", {}).get("value")
-        self.pathway_complementarity = pcompl if pcompl in [0,1] else True
+        self.pathway_complementarity = pcompl if pcompl in [0, 1] else True
         pc = PathwayComplementarity(config=self)
         self.__dict__.update(vars(pc))
 
@@ -188,7 +211,8 @@ class Config:
         # Phenotrex
         self.phen_classes = os.path.join(config_wd, "mtg_maps_models/phenDB/classes/")
         self.genotypes_file = os.path.join(self.output_dir, "train.genotype")
-        min_proba = conf.get("min_proba", {}).get("value") ; self.min_proba = min_proba if not None else 0.6
+        min_proba = conf.get("min_proba", {}).get("value")
+        self.min_proba = min_proba if not None else 0.6
 
         # Mappings
         mappings = MappingPaths()
@@ -201,17 +225,13 @@ class Config:
 
         # Manta
         net_clust = conf.get("network_clustering").get("value")
-        self.network_clustering = (
-            net_clust
-            if net_clust in [0,1]
-            else False
-        )
+        self.network_clustering = net_clust if net_clust in [0, 1] else False
         if self.network_clustering:
             self.prev_manta_net = conf.get("prev_clustered_network").get("file_path")
             self.manta_net = (
                 os.path.join(self.base_dir, self.prev_manta_net)
                 if self.prev_manta_net is not None
-                else os.path.join(self.output_dir, 'manta_annotated.cyjs')
+                else os.path.join(self.output_dir, "manta_annotated.cyjs")
             )
             self.base_network_file = os.path.join(self.output_dir, "basenet.cyjs")
 
@@ -220,7 +240,9 @@ class Config:
         self.__dict__.update(vars(sc))
 
         # Intermediate annoteted network file name
-        self.microbetag_annotated_network_file = os.path.join(self.output_dir, "pseudo_cx_annotated_net.cx")
+        self.microbetag_annotated_network_file = os.path.join(
+            self.output_dir, "pseudo_cx_annotated_net.cx"
+        )
         self.tinyurl = (
             conf.get("tinyurl", {}).get("value")
             if conf.get("tinyurl", {}).get("value")
@@ -232,7 +254,8 @@ class Config:
         import torch
         from deepnog.utils import get_weights_path
         from deepnog.utils import set_device
-        device = set_device('auto')
+
+        device = set_device("auto")
         try:
             weights_path = get_weights_path(
                 database="eggNOG5",
@@ -241,11 +264,12 @@ class Config:
             )
             _ = torch.load(weights_path, map_location=device)
         except:
-            logging.warn("Could not load the deepnog weights. Please check the deepnog installation and setup.")
+            logging.warn(
+                "Could not load the deepnog weights. Please check the deepnog installation and setup."
+            )
             pass
 
         logging.info("Configuration file loaded successfully.")
-
 
     def export_to_log(self, log_file="parameters.log"):
         args = convert_to_json_serializable(self.__dict__)

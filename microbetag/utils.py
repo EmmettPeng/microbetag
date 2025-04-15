@@ -17,10 +17,10 @@ import pandas as pd
 from typing import List
 
 
-
 # Handling data related
 def get_library_version(library_name):
     import pkg_resources
+
     try:
         version = pkg_resources.get_distribution(library_name).version
         return version
@@ -29,10 +29,11 @@ def get_library_version(library_name):
     except Exception as e:
         return str(e)
 
+
 def resolve_relative_path(base_dir, file_path):
     # Count the number of "../" at the beginning
     steps_back = 0
-    while file_path.startswith('../'):
+    while file_path.startswith("../"):
         steps_back += 1
         file_path = file_path[3:]  # Remove the leading "../"
 
@@ -51,13 +52,13 @@ def resolve_file_path(base_dir, file_path):
         return None
 
     # Otherwise, resolve the file path based on the base directory and the user's input
-    if file_path.startswith('/'):
+    if file_path.startswith("/"):
         path = file_path
 
-    if file_path.startswith('~'):
+    if file_path.startswith("~"):
         path = os.path.expanduser(file_path)
 
-    if file_path.startswith('../'):
+    if file_path.startswith("../"):
         path = resolve_relative_path(base_dir, file_path)
 
     else:
@@ -85,6 +86,7 @@ class SetEncoder(json.JSONEncoder):
     References:
         - json.JSONEncoder: https://docs.python.org/3/library/json.html#json.JSONEncoder
     """
+
     def default(self, obj):
         """
         Override the default method of JSONEncoder to handle serialization of sets.
@@ -152,15 +154,15 @@ def get_files_with_suffixes(directory, suffixes):
 
 
 def flatten(list_of_lists: List):
-   """
-   This function takes a list of lists and flattens it until it returns a list with
-   all the components of the initial one.
-   """
-   if len(list_of_lists) == 0:
-      return list_of_lists
-   if isinstance(list_of_lists[0], list):
-      return flatten(list_of_lists[0]) + flatten(list_of_lists[1:])
-   return list_of_lists[:1] + flatten(list_of_lists[1:])
+    """
+    This function takes a list of lists and flattens it until it returns a list with
+    all the components of the initial one.
+    """
+    if len(list_of_lists) == 0:
+        return list_of_lists
+    if isinstance(list_of_lists[0], list):
+        return flatten(list_of_lists[0]) + flatten(list_of_lists[1:])
+    return list_of_lists[:1] + flatten(list_of_lists[1:])
 
 
 def run_until_done(command: str):
@@ -192,7 +194,9 @@ def split_list(input_list: List, chunk_size: int):
     """
     Split a list to sublists of a size.
     """
-    return [input_list[i:i + chunk_size] for i in range(0, len(input_list), chunk_size)]
+    return [
+        input_list[i : i + chunk_size] for i in range(0, len(input_list), chunk_size)
+    ]
 
 
 def many_to_one_files(dir_with_files, merged_file):
@@ -200,14 +204,23 @@ def many_to_one_files(dir_with_files, merged_file):
     Makes a single file out of all files in a directory by concatenating having rows of one after the other
 
     """
-    command = " ".join([
-        "find", dir_with_files,
-        "-type", "f",
-        "-name", 'K*',
-        "-print0",
-        "|",
-        "xargs", "-0", "cat", ">", merged_file
-    ])
+    command = " ".join(
+        [
+            "find",
+            dir_with_files,
+            "-type",
+            "f",
+            "-name",
+            "K*",
+            "-print0",
+            "|",
+            "xargs",
+            "-0",
+            "cat",
+            ">",
+            merged_file,
+        ]
+    )
     os.system(command)
 
 
@@ -223,8 +236,8 @@ def ko_list_parser(ko_list: str):
     with open(ko_list) as fi:
         next(fi)  # skip the first line (header)
         for line in fi:
-            knum, threshold, score_type = line.split('\t')[0:3]
-            if threshold == '-':
+            knum, threshold, score_type = line.split("\t")[0:3]
+            if threshold == "-":
                 continue
             else:
                 ko_dic[knum] = [threshold, score_type]
@@ -241,19 +254,15 @@ def merge_ko(hmmout_dir, output):
     :param output (str): path/filename to save the output file
     """
     # Under any circumstances microbetag will overwrite the ko_merged.txt file
-    with open(output, 'w') as fo:
-        fo.write('bin_id\tcontig_id\tko_term\n')
+    with open(output, "w") as fo:
+        fo.write("bin_id\tcontig_id\tko_term\n")
     # Iterate through the bin folders in the hmmout folder
     for bin_id in os.listdir(hmmout_dir):
         bin_folder = os.path.join(hmmout_dir, bin_id)
         bin_file = "_".join([bin_id, "kos.tsv"])
         bin_kos_file = os.path.join(bin_folder, bin_file)
         # Append
-        os.system(
-            " ".join([
-                "cat", bin_kos_file, ">>", output
-            ])
-        )
+        os.system(" ".join(["cat", bin_kos_file, ">>", output]))
 
 
 def bin_kos_to_file(hmmout_dir, bin_id):
@@ -266,13 +275,13 @@ def bin_kos_to_file(hmmout_dir, bin_id):
     # Write 3-cols entries in tmp file
     bin_kos_file = os.path.join(hmmout_dir, "".join([bin_id, "_kos.tsv"]))
     if not os.path.exists(bin_kos_file):
-        open(bin_kos_file, 'w').close()
+        open(bin_kos_file, "w").close()
 
     for hmmout_file in os.listdir(hmmout_dir):
         try:
             basename, gene_id, k_number = parse_hmmout(hmmout_file, hmmout_dir)
-            with open(bin_kos_file, 'a') as fo:
-                fo.write(basename + '\t' + gene_id + '\t' + k_number + '\n')
+            with open(bin_kos_file, "a") as fo:
+                fo.write(basename + "\t" + gene_id + "\t" + k_number + "\n")
         except:
             # Ignore non-informative lines
             pass
@@ -297,16 +306,16 @@ def parse_hmmout(hmmout_file, hmmout_dir):
     :return gene_id (str): Gene id
     :retrun k_number (str): KEGG ORTHOLOGY term found
     """
-    if hmmout_file.endswith('.hmmout'):
-        kobasename = hmmout_file.rsplit('.', 1)[0]
-        basename   = kobasename.split('.', 1)[1]
+    if hmmout_file.endswith(".hmmout"):
+        kobasename = hmmout_file.rsplit(".", 1)[0]
+        basename = kobasename.split(".", 1)[1]
         hmmout_file_path = os.path.join(hmmout_dir, hmmout_file)
-        with open(hmmout_file_path, 'r') as fi:
+        with open(hmmout_file_path, "r") as fi:
             for line in fi:
-                if not line.startswith('#'):
+                if not line.startswith("#"):
                     gene_id, _ = line.split()[0:2]  # under _ the accession
                     lines = line.split()
-                    if re.match(r'[0-9]+$', lines[2]):
+                    if re.match(r"[0-9]+$", lines[2]):
                         k_number = lines[3]
                     else:
                         k_number = lines[2]
@@ -324,9 +333,9 @@ def load_merged_ko_file(merged_ko):
         pivot_df (pd.DataFrame): a presence-absence (1/0) df where KOs are the rows and bin_ids the columns
 
     """
-    if merged_ko.endswith('.gz'):
+    if merged_ko.endswith(".gz"):
         os.system(f"gunzip {merged_ko}")
-        merged_ko = merged_ko.rsplit('.gz', 1)[0]
+        merged_ko = merged_ko.rsplit(".gz", 1)[0]
 
     df = pd.read_csv(merged_ko, sep="\t")
 
@@ -335,8 +344,10 @@ def load_merged_ko_file(merged_ko):
 
     # Pivot the DataFrame to have 'kegg_id' as rows and 'bin_id' as columns
     unique_combinations = df.drop_duplicates().copy()
-    unique_combinations.loc[:, 'presence'] = 1
-    pivot_df = unique_combinations.pivot_table(index=ko, columns=bin_id, values='presence', fill_value=0)
+    unique_combinations.loc[:, "presence"] = 1
+    pivot_df = unique_combinations.pivot_table(
+        index=ko, columns=bin_id, values="presence", fill_value=0
+    )
 
     os.system(f"gzip {merged_ko}")
 
@@ -368,21 +379,23 @@ def ensure_flashweave_format(conf):
     Build an OTU table that will be in a FlashWeave-based format.
     """
 
-    flashweave_table = pd.read_csv(conf.abundance_table, sep=conf.delimiter).iloc[:, :-1]
-    float_col = flashweave_table.select_dtypes(include=['float64'])
+    flashweave_table = pd.read_csv(conf.abundance_table, sep=conf.delimiter).iloc[
+        :, :-1
+    ]
+    float_col = flashweave_table.select_dtypes(include=["float64"])
 
     try:
         for col in float_col.columns.values:
-            flashweave_table[col] = flashweave_table[col].astype('int64')
+            flashweave_table[col] = flashweave_table[col].astype("int64")
         flashweave_table.iloc[:, 0] = flashweave_table.iloc[:, 0].astype(str)
-        flashweave_table.to_csv(conf.flashweave_abd_table, sep='\t', index=False)
+        flashweave_table.to_csv(conf.flashweave_abd_table, sep="\t", index=False)
         return 1
 
     except Exception as e:
         logger.error(
             """Error in ensuring FlashWeave format: %s.
             Please check your FlashWeave parameters, especially `n_obs_min` and `k_max`.""",
-            e
+            e,
         )
         return 0
 
@@ -406,11 +419,10 @@ def ensure_same_namespace_after_fw(conf):
             return closest_match, index
         return None, None
 
-
     abd_df = pd.read_csv(conf.flashweave_abd_table, sep="\t")
     abd_df_seqids = abd_df[abd_df.columns[0]].tolist()
 
-    net_df = pd.read_csv(conf.network, sep="\t", skiprows=2, header = None)
+    net_df = pd.read_csv(conf.network, sep="\t", skiprows=2, header=None)
     net_df.columns = ["bin_a", "bind_b", "weight"]
 
     col1 = net_df["bin_a"].tolist()
@@ -425,18 +437,22 @@ def ensure_same_namespace_after_fw(conf):
                 # Replace the closest match in the current column
                 col[index] = element
 
-    net_df = pd.DataFrame(list(zip(col1, col2, weight)), columns=["bin_a", "bind_b", "microbetag::weight"])
+    net_df = pd.DataFrame(
+        list(zip(col1, col2, weight)), columns=["bin_a", "bind_b", "microbetag::weight"]
+    )
 
     net_df.to_csv(conf.network, sep="\t", index=False, header=False)
 
     return 1
 
 
-def extend_complements(complements_json,
-                       descrps_path,
-                       max_scratch_alt,
-                       pathway_complement_percentage,
-                       pathway_complements_dir):
+def extend_complements(
+    complements_json,
+    descrps_path,
+    max_scratch_alt,
+    pathway_complement_percentage,
+    pathway_complements_dir,
+):
     """
     Extends pathway complement annotations based on given settings and descriptions.
 
@@ -462,7 +478,7 @@ def extend_complements(complements_json,
     descrps = descrps[column_order]
 
     # Deep copy the complements dictionary
-    with open(complements_json, 'r') as file:
+    with open(complements_json, "r") as file:
         complements_dict = json.load(file)
     # complements_dict = json.load(open(complements_json))
     complements_dict_ext = copy.deepcopy(complements_dict)
@@ -474,8 +490,8 @@ def extend_complements(complements_json,
                 complements_dict_ext[beneficiary_bin][potential_donor] = {}
                 for compl in compls:
                     module_id = compl[0][3:]  # Extract module ID
-                    kos_to_get = compl[1]     # KOs required to complete the pathway
-                    complet_alt = compl[2]   # Alternative complements
+                    kos_to_get = compl[1]  # KOs required to complete the pathway
+                    complet_alt = compl[2]  # Alternative complements
 
                     # Skip if the complement is too complex based on settings
                     if len(complet_alt) == len(kos_to_get) > max_scratch_alt:
@@ -487,18 +503,24 @@ def extend_complements(complements_json,
                         continue
 
                     # Prepare the complement string
-                    compl_str = [x if isinstance(x, str) else ";".join(x) for x in compl[1:]]
+                    compl_str = [
+                        x if isinstance(x, str) else ";".join(x) for x in compl[1:]
+                    ]
 
                     # Fetch module description details
-                    triplet = descrps[descrps["moduleId"] == module_id].values.tolist()[0]
+                    triplet = descrps[descrps["moduleId"] == module_id].values.tolist()[
+                        0
+                    ]
 
                     # Add extended complement details
                     complements_dict_ext[beneficiary_bin][potential_donor][
                         len(complements_dict_ext[beneficiary_bin][potential_donor])
-                        ] = triplet + compl_str
+                    ] = (triplet + compl_str)
 
     # Save extended complements to JSON
-    extended_path_compl_json = os.path.join(pathway_complements_dir, "pathway_complements_extended.json")
+    extended_path_compl_json = os.path.join(
+        pathway_complements_dir, "pathway_complements_extended.json"
+    )
     with open(extended_path_compl_json, "w") as f:
         json.dump(complements_dict_ext, f)
 
@@ -511,7 +533,10 @@ def extend_faprotax(conf):
     to assign the biological processes related to each sequence id
     """
     bin_faprotax_traits = {}
-    fapro_sub_tables = [os.path.join(conf.faprotax_sub_tables, file) for file in os.listdir(conf.faprotax_sub_tables)]
+    fapro_sub_tables = [
+        os.path.join(conf.faprotax_sub_tables, file)
+        for file in os.listdir(conf.faprotax_sub_tables)
+    ]
     for file in fapro_sub_tables:
         trait_name, _ = os.path.splitext(os.path.basename(file))
         trait = pd.read_csv(file, sep="\t", skiprows=1)
@@ -530,7 +555,9 @@ def load_phenotypic_traits(conf):
     bin_phen_traits = {}
     phentraits = set()
 
-    all_phen_df = os.path.join(conf.predictions_path, "phen_traits.tsv")    # TODO: consider giving this also as an argument in the config -- MAKE SURE THEY GIVE SEQUENCE ID AND NOT GTDB ID !!
+    all_phen_df = os.path.join(
+        conf.predictions_path, "phen_traits.tsv"
+    )  # TODO: consider giving this also as an argument in the config -- MAKE SURE THEY GIVE SEQUENCE ID AND NOT GTDB ID !!
     if os.path.exists(all_phen_df):
         df = pd.read_csv(all_phen_df, sep="\t")
         df = df.drop(["NCBI_ID", "gtdb_id"], axis=1)
@@ -543,17 +570,20 @@ def load_phenotypic_traits(conf):
             for trait in phentraits:
                 bin_phen_traits[entry["sequence_id"]][trait] = {
                     "presence": entry[trait],
-                    "confidence": entry["".join([trait, "Score"])]
+                    "confidence": entry["".join([trait, "Score"])],
                 }
     else:
-        prediction_files = [os.path.join(conf.predictions_path, file) for file in os.listdir(conf.predictions_path)]
+        prediction_files = [
+            os.path.join(conf.predictions_path, file)
+            for file in os.listdir(conf.predictions_path)
+        ]
         for file in prediction_files:
             if os.path.getsize(file) == 0:
                 continue
 
             trait = pd.read_csv(file, sep="\t", skiprows=1)
             trait_name = os.path.basename(file).split(".prediction.tsv")[0]
-            trait_filtered = trait[trait['Trait present'].notna()]
+            trait_filtered = trait[trait["Trait present"].notna()]
             trait_dict = trait_filtered.to_dict(orient="records")
 
             for case in trait_dict:
@@ -563,7 +593,7 @@ def load_phenotypic_traits(conf):
                 phentraits.add(trait_name)
                 bin_phen_traits[bin_id][trait_name] = {
                     "presence": case["Trait present"],
-                    "confidence": case["Confidence"]
+                    "confidence": case["Confidence"],
                 }
     return bin_phen_traits, phentraits
 
@@ -587,7 +617,7 @@ def detect_separator(file_path):
     Detect the separator used in a text file, i.e `\t`,  `,` , `;` etc.
     """
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
 
             # Get the total file size
             file.seek(0, 2)  # Move to the end of the file
@@ -595,15 +625,23 @@ def detect_separator(file_path):
 
             # Calculate 1% of the file size: 1e6 is 1MB
             percent_size = (
-                file_size if file_size < 1e5 else
-                int(file_size * 0.2) if file_size < 1e6 else
-                int(file_size * 0.1) if 1e7 < file_size < 1e8 else
-                int(file_size * 0.01)
+                file_size
+                if file_size < 1e5
+                else (
+                    int(file_size * 0.2)
+                    if file_size < 1e6
+                    else (
+                        int(file_size * 0.1)
+                        if 1e7 < file_size < 1e8
+                        else int(file_size * 0.01)
+                    )
+                )
             )
             percent_size = max(percent_size, int(1e5))
 
             # Log sizes
-            logger.info(f"file_size of {file_path}: {file_size}") ; logger.info(f"percent_size:  {percent_size}")
+            logger.info(f"file_size of {file_path}: {file_size}")
+            logger.info(f"percent_size:  {percent_size}")
 
             # # Move to the start of the file
             file.seek(0)
@@ -629,7 +667,7 @@ def find_three_column_format(file_path, delimiter):
     Returns:
         tuple: (line_number, None) if the third column is a float, (line_number, 0) otherwise.
     """
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         for line_num, line in enumerate(f, start=1):
             # Split by tab and check the number of columns
             columns = line.strip().split(delimiter)
@@ -639,7 +677,9 @@ def find_three_column_format(file_path, delimiter):
                     return line_num, None
                 except ValueError:
                     return line_num, 0
-    raise ValueError(f"The network file {file_path} is not in the 3-columns format required.")
+    raise ValueError(
+        f"The network file {file_path} is not in the 3-columns format required."
+    )
 
 
 def get_tool_location(software):
@@ -681,7 +721,6 @@ def get_tool_location(software):
         # If neither path works
         logger.error(f"{software} is not available. Please install it first.")
         raise SystemExit(f"{software} is not available. Please install it first.")
-
 
 
 logger = mtg_logger(__name__)

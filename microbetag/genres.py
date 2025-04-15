@@ -7,17 +7,23 @@ import subprocess
 import multiprocessing
 
 from .utils import (
-    split_list, run_until_done, file_exists_and_nonzero,
-    get_library_version, get_tool_location, mtg_logger
+    split_list,
+    run_until_done,
+    file_exists_and_nonzero,
+    get_library_version,
+    get_tool_location,
+    mtg_logger,
 )
 
 logger = mtg_logger(__name__)
 
-class GEMSReconstruction():
+
+class GEMSReconstruction:
     """
     Class to first RAST annotate and the build Genome Scale Metabolic Reconstructions
     using modelseedpy
     """
+
     def __init__(self, config):
         self.config = config
 
@@ -25,7 +31,7 @@ class GEMSReconstruction():
         """
         Pool for running rast annotations for a list of bins
         """
-        if  len(self.config.bin_filenames) > self.config.threads:
+        if len(self.config.bin_filenames) > self.config.threads:
             chunk_size = self.config.threads
             bin_chunks = split_list(self.config.bin_filenames, chunk_size)
         else:
@@ -42,7 +48,8 @@ class GEMSReconstruction():
             pool.join()
             counter += chunk_size
             logger.info(
-                "We now have annotated %s genomes out of the %s" % (counter, len(self.config.bin_filenames))
+                "We now have annotated %s genomes out of the %s"
+                % (counter, len(self.config.bin_filenames))
             )
 
     def rast_annotate_a_genome(self, bin_filename):
@@ -53,40 +60,63 @@ class GEMSReconstruction():
         bin_file = os.path.join(self.config.bins_path, bin_filename)
         name, _ = os.path.splitext(bin_filename)
         genome = name
-        gto_filename = os.path.join(self.config.reconstructions, "".join([name, ".gto"]))
+        gto_filename = os.path.join(
+            self.config.reconstructions, "".join([name, ".gto"])
+        )
 
         # rast_create_genome_command: create a GTO for the bin's contig
-        rast_create_genome_command = " ".join([
-            "rast-create-genome", "--scientific-name", name,
-            "--genetic-code", "11", "--domain", "Bacteria",
-            "--contigs", bin_file,
-            "--genome-id", genome, ">", gto_filename
-            ])
+        rast_create_genome_command = " ".join(
+            [
+                "rast-create-genome",
+                "--scientific-name",
+                name,
+                "--genetic-code",
+                "11",
+                "--domain",
+                "Bacteria",
+                "--contigs",
+                bin_file,
+                "--genome-id",
+                genome,
+                ">",
+                gto_filename,
+            ]
+        )
         if not file_exists_and_nonzero(gto_filename):
-            rast_create_genome_command = ''.join(['\\:' if char == ':' else char for char in rast_create_genome_command])
+            rast_create_genome_command = "".join(
+                ["\\:" if char == ":" else char for char in rast_create_genome_command]
+            )
             logger.info("rast_create_genome_command: %s", rast_create_genome_command)
             run_until_done(rast_create_genome_command)
 
         # rast-process-genome: run the default RASTtk pipeline tool
         gto_filename_2 = "".join([gto_filename, "_2"])
-        rast_process_genome_command = " ".join([
-            "rast-process-genome", "<", gto_filename, ">", gto_filename_2
-            ])
+        rast_process_genome_command = " ".join(
+            ["rast-process-genome", "<", gto_filename, ">", gto_filename_2]
+        )
         if not file_exists_and_nonzero(gto_filename_2):
-            rast_process_genome_command = ''.join(['\\:' if char == ':' else char for char in rast_process_genome_command])
+            rast_process_genome_command = "".join(
+                ["\\:" if char == ":" else char for char in rast_process_genome_command]
+            )
             logger.info("rast_process_genome_command: %s", rast_process_genome_command)
             run_until_done(rast_process_genome_command)
 
         # rast-export-genome protein_fasta: export the genome in a desired format
         faa_filename = "".join([gto_filename[:-4], ".faa"])
-        rast_export_genome_command = " ".join([
-            "rast-export-genome",
-            "protein_fasta",
-            "<", gto_filename_2, ">",
-            faa_filename
-            ])
+        rast_export_genome_command = " ".join(
+            [
+                "rast-export-genome",
+                "protein_fasta",
+                "<",
+                gto_filename_2,
+                ">",
+                faa_filename,
+            ]
+        )
         if not file_exists_and_nonzero(faa_filename):
-            rast_export_genome_command = ''.join(['\\:' if char == ':' else char for char in rast_export_genome_command])
+            rast_export_genome_command = "".join(
+                ["\\:" if char == ":" else char for char in rast_export_genome_command]
+            )
             logger.info("rast_export_genome_command: %s", rast_export_genome_command)
             run_until_done(rast_export_genome_command)
 
@@ -103,10 +133,11 @@ class GEMSReconstruction():
                 for file in os.listdir(self.config.for_reconstructions)
             ]
         else:
-            faa_files = [file
-                        for file in os.listdir(self.config.reconstructions)
-                        if file.endswith(".faa")
-                        ]
+            faa_files = [
+                file
+                for file in os.listdir(self.config.reconstructions)
+                if file.endswith(".faa")
+            ]
         if get_library_version("scikit-learn") != "0.24.2":
             os.system("python3 -m pip install scikit-learn==0.24.2")
         for faa_file in faa_files:
@@ -119,12 +150,12 @@ class GEMSReconstruction():
         # ModelSEED using the default b.f and complete medium, gapfill with the default algo
         model_id, _ = os.path.splitext(annotation_faa.split("/")[-1])
         annotation_faa_path = os.path.join(self.config.reconstructions, annotation_faa)
-        model_filename =  os.path.join(self.config.genres, "".join([model_id, ".xml"]))
+        model_filename = os.path.join(self.config.genres, "".join([model_id, ".xml"]))
         if os.path.exists(model_filename):
             return 1
         logger.info("Model to be reconstructed: %s", model_id)
         model = self.recursive_build(model_id, annotation_faa_path)
-        cobra.io.write_sbml_model(cobra_model = model, filename = model_filename)
+        cobra.io.write_sbml_model(cobra_model=model, filename=model_filename)
 
     def recursive_build(self, model_id, annotation_faa_path, counter=0):
         """
@@ -135,6 +166,7 @@ class GEMSReconstruction():
         """
 
         from modelseedpy import MSBuilder, MSGenome
+
         if counter >= 20:
 
             # Run the script again with the given arguments   -- TODO:   THIS IS A BIT EXTREME...
@@ -142,15 +174,15 @@ class GEMSReconstruction():
 
         counter += 1
         try:
-            msgenome = MSGenome.from_fasta(annotation_faa_path, split=' ')
+            msgenome = MSGenome.from_fasta(annotation_faa_path, split=" ")
             model = MSBuilder.build_metabolic_model(
-                model_id = model_id,
-                genome = msgenome,
-                index = "0",
-                gapfill_model = self.config.gapfill_model,
-                gapfill_media = None,
-                annotate_with_rast = True,
-                allow_all_non_grp_reactions = True
+                model_id=model_id,
+                genome=msgenome,
+                index="0",
+                gapfill_model=self.config.gapfill_model,
+                gapfill_media=None,
+                annotate_with_rast=True,
+                allow_all_non_grp_reactions=True,
             )
             return model
         except:
@@ -165,7 +197,11 @@ class GEMSReconstruction():
         """
         if self.config.input_for_recon_type == "bins_fasta":
 
-            gene_predictor_path = self.config.prodigal if self.config.gene_predictor == "prodigal" else self.config.reconstructions
+            gene_predictor_path = (
+                self.config.prodigal
+                if self.config.gene_predictor == "prodigal"
+                else self.config.reconstructions
+            )
             print(gene_predictor_path)
             faa_files = [
                 os.path.join(gene_predictor_path, tfile)
@@ -180,7 +216,9 @@ class GEMSReconstruction():
                 os.path.join(self.config.for_reconstructions, file)
                 for file in os.listdir(self.config.for_reconstructions)
             ]
-            self.run_carve(faa_files, dna=self.config.input_for_recon_type == "coding_regions")
+            self.run_carve(
+                faa_files, dna=self.config.input_for_recon_type == "coding_regions"
+            )
 
     def run_carve(self, faa_files, dna=False):
         """
@@ -220,24 +258,33 @@ class GEMSReconstruction():
                 logger.info(f"Bin {bin_filename} is being annotated using FGS.")
                 fgs_params = [
                     FGS,
-                    "-s",  bin_file,
-                    " -o", faa,
+                    "-s",
+                    bin_file,
+                    " -o",
+                    faa,
                     "-w  1",
-                    "-p", str(self.config.threads),
-                    "-t", COMPLETE
+                    "-p",
+                    str(self.config.threads),
+                    "-t",
+                    COMPLETE,
                 ]
                 # fgs_command = " ".join(fgs_params)
                 # os.system(fgs_command)
                 try:
-                    _ = subprocess.run(fgs_params, capture_output=True, text=True, check=True)
+                    _ = subprocess.run(
+                        fgs_params, capture_output=True, text=True, check=True
+                    )
                 except subprocess.CalledProcessError as e:
-                    logger.error(f"FGS annotation failed for {bin_filename}. Error:\n{e.stderr}")
+                    logger.error(
+                        f"FGS annotation failed for {bin_filename}. Error:\n{e.stderr}"
+                    )
 
         os.chdir(cwd)
 
 
 def fire_microbetag(yaml_file):
     import sys
+
     logger.warning(
         """
         \n\n******
@@ -251,5 +298,3 @@ def fire_microbetag(yaml_file):
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     script_path = os.path.join(root_dir, "microbetag.py")
     subprocess.run([sys.executable, script_path, yaml_file])
-
-

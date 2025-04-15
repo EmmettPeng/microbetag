@@ -6,6 +6,7 @@ from .utils import detect_separator, find_three_column_format, mtg_logger
 
 logger = mtg_logger(__name__)
 
+
 # Base .cx  -- TODO : CHECK ID DEPRECATED
 def build_edge_list(edgelist, metadata_file=None):
     """
@@ -22,26 +23,40 @@ def build_edge_list(edgelist, metadata_file=None):
     - pd.DataFrame (optional): Edges that were excluded based on metadata.
     """
     # Read the edge list into a DataFrame
-    pd_edgelist = pd.read_csv(edgelist, sep="\t", header=None, names=["node_A", "node_B", "score"])  # skiprows=
+    pd_edgelist = pd.read_csv(
+        edgelist, sep="\t", header=None, names=["node_A", "node_B", "score"]
+    )  # skiprows=
 
     if metadata_file:
         # Read the metadata file and create a list of elements to exclude
-        elements_to_exclude = pd.read_csv(metadata_file, sep="\t", header=None, index_col=0).index.to_list()
+        elements_to_exclude = pd.read_csv(
+            metadata_file, sep="\t", header=None, index_col=0
+        ).index.to_list()
 
         # Define a mask to filter out rows with nodes in the exclusion list
-        mask = ~pd_edgelist.apply(lambda row: any(env in row['node_A'] or env in row['node_B'] for env in elements_to_exclude), axis=1)
+        mask = ~pd_edgelist.apply(
+            lambda row: any(
+                env in row["node_A"] or env in row["node_B"]
+                for env in elements_to_exclude
+            ),
+            axis=1,
+        )
 
         # Separate DataFrame based on the mask
         pd_filtered_edgelist = pd_edgelist[mask].copy()
         pd_metadata_edges = pd_edgelist[~mask].copy()
 
         # Create 'pair-of-taxa' column for filtered edges
-        pd_filtered_edgelist["pair-of-taxa"] = pd_filtered_edgelist['node_A'] + ":" + pd_filtered_edgelist["node_B"]
+        pd_filtered_edgelist["pair-of-taxa"] = (
+            pd_filtered_edgelist["node_A"] + ":" + pd_filtered_edgelist["node_B"]
+        )
 
         return pd_filtered_edgelist, pd_metadata_edges
     else:
         # Return the original edge list if no metadata file is provided
-        pd_edgelist["pair-of-taxa"] = pd_edgelist['node_A'].astype(str) + ":" + pd_edgelist["node_B"]
+        pd_edgelist["pair-of-taxa"] = (
+            pd_edgelist["node_A"].astype(str) + ":" + pd_edgelist["node_B"]
+        )
         return pd_edgelist
 
 
@@ -62,15 +77,15 @@ def read_cyjson(filename, direction=False):
     """
     with open(filename) as f:
         data = json.load(f)
-    name = 'name'
-    ident = 'id'
+    name = "name"
+    ident = "id"
     if len(set([ident, name])) < 2:
-        raise nx.NetworkXError('Attribute names are not unique.')
+        raise nx.NetworkXError("Attribute names are not unique.")
     if direction:
         graph = nx.DiGraph()
     else:
         graph = nx.Graph()
-    graph.graph = dict(data.get('data'))
+    graph.graph = dict(data.get("data"))
     i = 0
     for d in data["elements"]["nodes"]:
         # only modification: 'value' key is not included in CoNet output
@@ -99,10 +114,12 @@ def read_cyjson(filename, direction=False):
 
 
 def get_edgelist(conf):
-    """ Loads a 3-column network file as pd.DataFrame"""
-    delimiter        = detect_separator(conf.network)
+    """Loads a 3-column network file as pd.DataFrame"""
+    delimiter = detect_separator(conf.network)
     line_num, header = find_three_column_format(conf.network, delimiter)
-    edgelist         = pd.read_csv(conf.network, sep=delimiter, skiprows=line_num-1, header=header)
+    edgelist = pd.read_csv(
+        conf.network, sep=delimiter, skiprows=line_num - 1, header=header
+    )
     edgelist.columns = ["node_A", "node_B", "microbetag::weight"]
     return edgelist
 
@@ -155,7 +172,9 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
         new_edge["data"]["target"] = node_name_b
         new_edge["data"]["selected"] = False
 
-        new_edge["data"]["shared_name"] = node_name_a.split(";")[-1] + "-" + node_name_b.split(";")[-1]
+        new_edge["data"]["shared_name"] = (
+            node_name_a.split(";")[-1] + "-" + node_name_b.split(";")[-1]
+        )
 
         new_edge["data"]["SUID"] = str(counter)
         new_edge["data"]["name"] = "co-occurrence"
@@ -168,7 +187,9 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
     base_network["elements"]["nodes"] = nodes
     base_network["elements"]["edges"] = edges
     base_network["data"] = {}
-    base_network["data"]["title"] = "microbetag annotated microbial co-occurrence network"
+    base_network["data"][
+        "title"
+    ] = "microbetag annotated microbial co-occurrence network"
     base_network["data"]["tags"] = ["v1.0"]
     return base_network
 

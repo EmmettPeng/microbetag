@@ -18,13 +18,13 @@ def build_kegg_url(kegg_map, clean_path, missing_kos, shortener=None):
     """
     # Load the dictionary with the kegg modules and their corresponding maps
     color_mapp_base_url = "https://www.kegg.jp/kegg-bin/show_pathway?"
-    present_kos_color   = "%09%23EAD1DC/"
+    present_kos_color = "%09%23EAD1DC/"
     complemet_kos_color = "%09%2300A898/"
 
     # Make a url pointing at a colored kegg map based on what's on the beneficiary's genome
     # and what it gets as complement from the donor
     beneficiarys_kos = ""
-    complements_kos  = ""
+    complements_kos = ""
     for ko_term in clean_path:
         if ko_term not in missing_kos:
             beneficiarys_kos = "".join([beneficiarys_kos, ko_term, present_kos_color])
@@ -33,7 +33,9 @@ def build_kegg_url(kegg_map, clean_path, missing_kos, shortener=None):
     try:
         # [NOTE] In rare cases, the module might not have a related map, thus kegg_map would be of NoneType
         # and the join() would return an error.
-        url_ko_map_colored = "".join([color_mapp_base_url, kegg_map,  "/", beneficiarys_kos, complements_kos])
+        url_ko_map_colored = "".join(
+            [color_mapp_base_url, kegg_map, "/", beneficiarys_kos, complements_kos]
+        )
         if shortener is not None:
             logger.info("Shortening the URL.")
             url_ko_map_colored = shortener.tinyurl.short(url_ko_map_colored)
@@ -43,7 +45,9 @@ def build_kegg_url(kegg_map, clean_path, missing_kos, shortener=None):
     return url_ko_map_colored
 
 
-def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_output_file):
+def all_alternatives(
+    bin_kos_per_module, modules_definitions_json_map, alts_output_file
+):
     """
     Build the alts.json file
     list alternatives for a bin's modules to be completed
@@ -56,13 +60,21 @@ def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_outp
     """
     logger.info("Step 2, build alts.json file.")
 
-    with open(modules_definitions_json_map, 'r') as f:
+    with open(modules_definitions_json_map, "r") as f:
         mo_map = json.load(f)
 
-    structurals = ["md:M00144","md:M00149","md:M00151",
-                   "md:M00152","md:M00154","md:M00155",
-                   "md:M00153", "md:M00156", "md:M00158",
-                   "md:M00160"]
+    structurals = [
+        "md:M00144",
+        "md:M00149",
+        "md:M00151",
+        "md:M00152",
+        "md:M00154",
+        "md:M00155",
+        "md:M00153",
+        "md:M00156",
+        "md:M00158",
+        "md:M00160",
+    ]
     # Iterate through bins
     bins_alternatives = {}
     for bin_id in bin_kos_per_module:
@@ -75,9 +87,14 @@ def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_outp
                 continue
             # Get KOs related to the module under study that are present on the beneficiary's genome
             list_of_kos_present = set(kos_on_its_own)
-            definition_under_study = mo_map[module]['steps']
-            definition_under_study_proc = [term if isinstance(term, list) else [term] for term in definition_under_study.values()]
-            potential_compl_paths = [list(tup) for tup in itertools.product(*definition_under_study_proc)]
+            definition_under_study = mo_map[module]["steps"]
+            definition_under_study_proc = [
+                term if isinstance(term, list) else [term]
+                for term in definition_under_study.values()
+            ]
+            potential_compl_paths = [
+                list(tup) for tup in itertools.product(*definition_under_study_proc)
+            ]
             flat_potent_compl_paths = [flatten(path) for path in potential_compl_paths]
             for path in flat_potent_compl_paths:
                 check = all(item in list_of_kos_present for item in path)
@@ -85,7 +102,9 @@ def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_outp
                     if module not in complete_modules:
                         complete_modules.add(module)
                 else:
-                    gaps = set(x for x in set(path) if x not in set(list_of_kos_present))
+                    gaps = set(
+                        x for x in set(path) if x not in set(list_of_kos_present)
+                    )
                     if module not in alternatives_to_gap:
                         alternatives_to_gap[module] = {}
                         alternatives_to_gap[module][str(path)] = gaps
@@ -102,10 +121,11 @@ def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_outp
             tmp = tmp2 = alternatives_to_gap[module].copy()
             min_val = min([len(path_gaps[ele]) for ele in path_gaps])
             values = list(tmp2.values())
-            shortest_alternatives = [list(tmp2.keys())[values.index(s)]
-                                    for s in values
-                                    if not any(s.issuperset(i) and len(s) > len(i) for i in values)
-                                    ]
+            shortest_alternatives = [
+                list(tmp2.keys())[values.index(s)]
+                for s in values
+                if not any(s.issuperset(i) and len(s) > len(i) for i in values)
+            ]
             for path, gaps in alternatives_to_gap[module].items():
                 if len(gaps) > min_val + 1 or path not in shortest_alternatives:
                     del tmp[path]
@@ -123,7 +143,13 @@ def all_alternatives(bin_kos_per_module, modules_definitions_json_map, alts_outp
     return bins_alternatives
 
 
-def all_complements(bin_kos_per_module, bins_alternatives, module_to_map, compl_output_file, tinyurl=False):
+def all_complements(
+    bin_kos_per_module,
+    bins_alternatives,
+    module_to_map,
+    compl_output_file,
+    tinyurl=False,
+):
     """
     Extract potential complementarities from other bins
 
@@ -149,33 +175,44 @@ def all_complements(bin_kos_per_module, bins_alternatives, module_to_map, compl_
             for module, alts in all_bin_module_alternatives.items():
                 donors_kos_relativ_to_module = bin_kos_per_module[donor_bin_id][module]
                 for alternative, missing_kos_for_alternative in alts.items():
-                    is_subset = set(missing_kos_for_alternative).issubset(set(donors_kos_relativ_to_module))
+                    is_subset = set(missing_kos_for_alternative).issubset(
+                        set(donors_kos_relativ_to_module)
+                    )
                     if is_subset:
                         alternative = ast.literal_eval(alternative)
-                        pc_comb = (module, tuple(missing_kos_for_alternative), tuple(alternative))
+                        pc_comb = (
+                            module,
+                            tuple(missing_kos_for_alternative),
+                            tuple(alternative),
+                        )
                         if pc_comb not in unique_url_input:
                             try:
                                 module_map = module_to_map[module]
-                                url = build_kegg_url(module_map,
-                                                    list(alternative),
-                                                    list(set(missing_kos_for_alternative)),
-                                                    shortener)
+                                url = build_kegg_url(
+                                    module_map,
+                                    list(alternative),
+                                    list(set(missing_kos_for_alternative)),
+                                    shortener,
+                                )
                             except:
                                 url = ""
                                 pass
                             unique_url_input[pc_comb] = url
 
                         # Build list with the complete complement
-                        pot_compl = [module,
-                                    missing_kos_for_alternative,
-                                    alternative,
-                                    unique_url_input[pc_comb]
-                                    ]
+                        pot_compl = [
+                            module,
+                            missing_kos_for_alternative,
+                            alternative,
+                            unique_url_input[pc_comb],
+                        ]
                         complements[beneficiary_bin_id][donor_bin_id].append(pot_compl)
     # Write the pathCompls.json file
     with open(compl_output_file, "w") as file:
         json.dump(complements, file, cls=SetEncoder)
-    logger.info("Step 3, the potential complementarities among the bins were enumerated.")
+    logger.info(
+        "Step 3, the potential complementarities among the bins were enumerated."
+    )
 
     return complements
 
@@ -201,10 +238,12 @@ def taxon_kos_per_module(bins_kos_df, ko_terms_per_module_definition):
         bin_kos_per_module (Dict):
     """
     d = pd.read_csv(ko_terms_per_module_definition, sep="\t")
-    d.columns =["module_id","ko_term"]
-    d.loc[:, 'presence'] = 1
-    definitions_df = d.pivot_table(index='ko_term', columns='module_id', values='presence', fill_value=0)
-    ind = definitions_df.index.str.replace('ko:', '')
+    d.columns = ["module_id", "ko_term"]
+    d.loc[:, "presence"] = 1
+    definitions_df = d.pivot_table(
+        index="ko_term", columns="module_id", values="presence", fill_value=0
+    )
+    ind = definitions_df.index.str.replace("ko:", "")
     definitions_df.index = ind
 
     bin_kos_per_module = {}
@@ -216,9 +255,11 @@ def taxon_kos_per_module(bins_kos_df, ko_terms_per_module_definition):
             # Get KOs of the module definition
             definition_ko_terms = definition_ko_terms[definition_ko_terms != 0]
             # Get KOs present on the bin
-            bins_kos = bins_kos_df[bins_kos_df[bin_id]==1][bin_id]
+            bins_kos = bins_kos_df[bins_kos_df[bin_id] == 1][bin_id]
             # Get intersection and add the module: kos_present to the dict
-            bin_kos_per_module[bin_id][module] = bins_kos.index.intersection(definition_ko_terms.index).tolist()
+            bin_kos_per_module[bin_id][module] = bins_kos.index.intersection(
+                definition_ko_terms.index
+            ).tolist()
 
     return bin_kos_per_module
 
@@ -236,12 +277,16 @@ def export_pathway_complementarities(config, bins_kos_df):
     """
 
     # Keep track of the KOs related to a module present on each bin
-    bin_kos_per_module = taxon_kos_per_module(bins_kos_df, config.ko_terms_per_module_definition)
+    bin_kos_per_module = taxon_kos_per_module(
+        bins_kos_df, config.ko_terms_per_module_definition
+    )
 
     # If alts.json not available
     if not os.path.exists(config.alts_file):
 
-        bins_alternatives = all_alternatives(bin_kos_per_module, config.modules_definitions_json_map, config.alts_file)
+        bins_alternatives = all_alternatives(
+            bin_kos_per_module, config.modules_definitions_json_map, config.alts_file
+        )
 
     else:
 
@@ -252,7 +297,13 @@ def export_pathway_complementarities(config, bins_kos_df):
     if not os.path.exists(config.compl_file):
 
         module_to_map = a_modules_maps(config.kegg_modules_to_maps)
-        complements = all_complements(bin_kos_per_module, bins_alternatives, module_to_map, config.compl_file, config.tinyurl)
+        complements = all_complements(
+            bin_kos_per_module,
+            bins_alternatives,
+            module_to_map,
+            config.compl_file,
+            config.tinyurl,
+        )
 
     else:
 
@@ -260,4 +311,3 @@ def export_pathway_complementarities(config, bins_kos_df):
             complements = json.load(h)
 
     return bins_alternatives, complements
-

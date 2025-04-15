@@ -31,6 +31,7 @@ from .pathway_complementarity import export_pathway_complementarities
 
 logger = mtg_logger(__name__)
 
+
 def run_microbetag(config):
 
     # ----------------
@@ -66,7 +67,9 @@ def run_microbetag(config):
     # ----------------
     # Prodigal - ORF prediction
     # ----------------
-    if (config.pathway_complementarity or config.seed_complementarity) and config.ko_merged is None:
+    if (
+        config.pathway_complementarity or config.seed_complementarity
+    ) and config.ko_merged is None:
         if len(os.listdir(config.prodigal)) != len(config.bins_ids):
             logger.info("[STEP  ] PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
 
@@ -87,7 +90,9 @@ def run_microbetag(config):
 
                 logger.info(f"Running Prodigal for {bin_id}")
 
-                print(bin_fa, bin_id, config.prodigal)          # TODO: check if bin_id is actually only the basename of the whole path until extension
+                print(
+                    bin_fa, bin_id, config.prodigal
+                )  # TODO: check if bin_id is actually only the basename of the whole path until extension
 
                 run_prodigal(bin_fa, bin_id, config.prodigal)
 
@@ -104,11 +109,11 @@ def run_microbetag(config):
 
             logger.info("[STEP ] KEGG ANNOTATION OF THE ORFs \n")
 
-            ko_list = os.path.join(config.kegg_db_dir, 'ko_list')
+            ko_list = os.path.join(config.kegg_db_dir, "ko_list")
             ko_dic = ko_list_parser(ko_list)
 
             hmmout_dir = config.kegg_pieces_dir
-            config.ko_merged = os.path.join(config.kegg_annotations, 'ko_merged.txt')
+            config.ko_merged = os.path.join(config.kegg_annotations, "ko_merged.txt")
 
             for bn in config.bin_filenames:
                 bin_id, _ = os.path.splitext(bn)
@@ -120,12 +125,19 @@ def run_microbetag(config):
                         continue
 
                 for bn in config.bin_filenames:
-                    faa = os.path.join(config.prodigal, bin_id + '.faa')
+                    faa = os.path.join(config.prodigal, bin_id + ".faa")
                     # A folder with KO predictions (a single hmmout file for each KO) per bin
-                    check = kegg_annotation(faa, bin_id, config.kegg_pieces_dir, config.kegg_db_dir, ko_dic, config.threads)
+                    check = kegg_annotation(
+                        faa,
+                        bin_id,
+                        config.kegg_pieces_dir,
+                        config.kegg_db_dir,
+                        ko_dic,
+                        config.threads,
+                    )
                     # Out of the 24K hmmout files, make a single one with the predictions as backup and one with the 3-columns
                     if check:
-                        bin_kos_to_file(hmmout_dir=bin_kos_dir , bin_id=bin_id)
+                        bin_kos_to_file(hmmout_dir=bin_kos_dir, bin_id=bin_id)
 
             # Make the 3-columns files with all bins and their KOs
             merge_ko(config.kegg_pieces_dir, config.ko_merged)
@@ -139,15 +151,14 @@ def run_microbetag(config):
         # ----------------
         pivot_df = load_merged_ko_file(config.ko_merged)  # Load ko_merged.txt
 
-        if not os.path.exists(config.alts_file) or not os.path.exists(config.compl_file):
+        if not os.path.exists(config.alts_file) or not os.path.exists(
+            config.compl_file
+        ):
 
             print("[STEP ] GET PATHWAY COMPLEMENTS ")
             print(pivot_df)
             # bin_kos_per_module, alt_to_gapfill, complements =
-            _, _ = export_pathway_complementarities(
-                config,
-                pivot_df
-            )
+            _, _ = export_pathway_complementarities(config, pivot_df)
 
     # ----------------
     # Seed complementarity
@@ -175,18 +186,22 @@ def run_microbetag(config):
                     build_genres.rast_annotate_genomes()  # saves under config.reconstructions
 
                 elif config.gene_predictor == "prodigal":
-                    logger.info("DiTing .faa files will be used")  # go to the .faa case, i.e., the ORFs/
+                    logger.info(
+                        "DiTing .faa files will be used"
+                    )  # go to the .faa case, i.e., the ORFs/
 
                 elif config.gene_predictor == "fragGeneScan":
                     logger.info("Get annotations with FragGeneScan.")
-                    build_genres.fgs_annotate_genomes()   # saves under config.reconstructions
+                    build_genres.fgs_annotate_genomes()  # saves under config.reconstructions
 
             elif config.input_for_recon_type == "coding_regions":
                 logger.info("CarveMe will be used with the users .ffn-like files.")
 
             else:
-                logger.warning(f"The combination of gene_predictor: {config.gene_predictor} \
-                    \nand genre_reconstruction_with: {config.genre_reconstruction_with}, are not supported")
+                logger.warning(
+                    f"The combination of gene_predictor: {config.gene_predictor} \
+                    \nand genre_reconstruction_with: {config.genre_reconstruction_with}, are not supported"
+                )
 
             # Reconstruct step
             if config.genre_reconstruction_with == "modelseedpy":
@@ -209,7 +224,9 @@ def run_microbetag(config):
     # ----------------
     if config.network_clustering and config.prev_manta_net is None:
 
-        logger.info("""[STEP]: network clustering using manta and the abundance table""")
+        logger.info(
+            """[STEP]: network clustering using manta and the abundance table"""
+        )
         # Build original input file in cyjs format
         manta_input_net(config)
 
@@ -248,8 +265,10 @@ def print_help():
     """
     print(help_message)
 
+
 def print_version():
     print(__version__)
+
 
 def print_config_message():
     conf_message = """
@@ -265,8 +284,9 @@ def main():
     parser = argparse.ArgumentParser(description="Microbetag CLI")
 
     parser.add_argument("--config", "-c", help="Path to the configuration yaml file.")
-    parser.add_argument("-v", "--version", action="store_true", help="Show Microbetag version")
-
+    parser.add_argument(
+        "-v", "--version", action="store_true", help="Show Microbetag version"
+    )
 
     args = parser.parse_args()
 
@@ -279,7 +299,7 @@ def main():
         sys.exit(0)
 
     try:
-        with open(args.config, 'r') as yaml_file:
+        with open(args.config, "r") as yaml_file:
             config = Config(yaml.safe_load(yaml_file), args.config)
     except yaml.YAMLError:
         print_config_message()
@@ -287,7 +307,6 @@ def main():
 
     # Run microbetag pipeline
     run_microbetag(config=config)
-
 
 
 if __name__ == "__main__":

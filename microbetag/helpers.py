@@ -1,6 +1,7 @@
 """
 Handlers classes allowing the different steps
 """
+
 import os, sys
 import json
 import pickle
@@ -11,10 +12,12 @@ from .networks import build_base_graph
 
 logger = mtg_logger(__name__)
 
+
 class PathwayComplementarity:
     """
     Sets variables regarding pathway complementarity tasks based on user's config (.yml) file
     """
+
     def __init__(self, config):
         self.conf = config
         self.base_dir = config.base_dir
@@ -32,7 +35,7 @@ class PathwayComplementarity:
         self.kegg_annotations = os.path.join(self.output_dir, "KEGG_annotations")
         os.makedirs(self.kegg_annotations, exist_ok=True)
 
-        self.kegg_pieces_dir = os.path.join(self.kegg_annotations, 'hmmout')
+        self.kegg_pieces_dir = os.path.join(self.kegg_annotations, "hmmout")
         os.makedirs(self.kegg_pieces_dir, exist_ok=True)
 
     def get_kofam_db_path(self):
@@ -65,11 +68,10 @@ class PathwayComplementarity:
             self.output_dirs(conf)
 
             # Maximum length of compl
-            max_scratch_alt = conf.yaml.get("max_length_for_complement_from_scratch", {}).get("value")
-            self.max_scratch_alt = (
-                max_scratch_alt if max_scratch_alt is not None
-                else 1
-            )
+            max_scratch_alt = conf.yaml.get(
+                "max_length_for_complement_from_scratch", {}
+            ).get("value")
+            self.max_scratch_alt = max_scratch_alt if max_scratch_alt is not None else 1
             # Set up KEGG annotations 3-column file
             ko_merged = self.conf.yaml.get("ko_merged_file", {}).get("file_path")
             ko_merged = resolve_file_path(self.base_dir, ko_merged)
@@ -81,7 +83,9 @@ class PathwayComplementarity:
 
     def output_dirs(self, config):
         """Paths to output folders and files"""
-        self.pathway_complements_dir = os.path.join(self.output_dir, "pathway_complementarity")
+        self.pathway_complements_dir = os.path.join(
+            self.output_dir, "pathway_complementarity"
+        )
         os.makedirs(self.pathway_complements_dir, exist_ok=True)
         self.alts_file = os.path.join(self.pathway_complements_dir, "alts.json")
         self.compl_file = os.path.join(self.pathway_complements_dir, "pathCompls.json")
@@ -96,14 +100,21 @@ class MappingPaths:
     """
     Sets paths to mapping files
     """
+
     def __init__(self):
         mtg = os.path.dirname(__file__)
         kegg_mappings = os.path.join(mtg, "mtg_maps_models/kegg_mappings/")
         self.kegg_mappings = kegg_mappings
-        self.metanetx_compounds = os.path.join(mtg, "mtg_maps_models/MetaNetX/chem_xref.tar.gz")
+        self.metanetx_compounds = os.path.join(
+            mtg, "mtg_maps_models/MetaNetX/chem_xref.tar.gz"
+        )
 
-        self.ko_terms_per_module_definition = os.path.join(kegg_mappings, "kegg_terms_per_module.tsv")
-        self.modules_definitions_json_map = os.path.join(kegg_mappings, "module_definition_map.json")
+        self.ko_terms_per_module_definition = os.path.join(
+            kegg_mappings, "kegg_terms_per_module.tsv"
+        )
+        self.modules_definitions_json_map = os.path.join(
+            kegg_mappings, "module_definition_map.json"
+        )
         self.kegg_modules_to_maps = os.path.join(kegg_mappings, "module_map_pairs.tsv")
         self.seed_ko_mo = os.path.join(self.kegg_mappings, "seedId_keggId_module.tsv")
         self.module_descriptions = os.path.join(kegg_mappings, "module_descriptions")
@@ -114,10 +125,16 @@ class Faprotax:
         """
         Sets paths to files to be used when running FAPROTAX
         """
-        self.faprotax_txt = os.path.join(config.cwd, "mtg_maps_models/FAPROTAX_1.2.10/FAPROTAX.txt")
-        self.faprotax_script = os.path.join(config.cwd, "mtg_maps_models/FAPROTAX_1.2.10/collapse_table.py")
+        self.faprotax_txt = os.path.join(
+            config.cwd, "mtg_maps_models/FAPROTAX_1.2.10/FAPROTAX.txt"
+        )
+        self.faprotax_script = os.path.join(
+            config.cwd, "mtg_maps_models/FAPROTAX_1.2.10/collapse_table.py"
+        )
         self.faprotax_output_dir = os.path.join(config.output_dir, "faprotax")
-        self.faprotax_funct_table = os.path.join(self.faprotax_output_dir, "functional_otu_table.tsv")
+        self.faprotax_funct_table = os.path.join(
+            self.faprotax_output_dir, "functional_otu_table.tsv"
+        )
         self.faprotax_sub_tables = os.path.join(self.faprotax_output_dir, "sub_tables")
         os.makedirs(self.faprotax_output_dir, exist_ok=True)
         os.makedirs(self.faprotax_sub_tables, exist_ok=True)
@@ -147,17 +164,23 @@ class NetworkHandler:
 
         if config.abundance_table is not None and config.bins_ids is not None:
 
-            bins_in_abundance_file = set(config.bins_ids)  # Assuming bins is a list or set
+            bins_in_abundance_file = set(
+                config.bins_ids
+            )  # Assuming bins is a list or set
 
             if not bins_in_net.issubset(bins_in_abundance_file):
                 missing_bins = bins_in_net - bins_in_abundance_file
-                logger.warn(f"These bins are nodes on your provided network but not in your provided list of bins: {missing_bins}")
+                logger.warn(
+                    f"These bins are nodes on your provided network but not in your provided list of bins: {missing_bins}"
+                )
 
         elif config.abundance_table is None:
-            self.seq_ids = bins_in_net  # Store sequence IDs if no abundance table is provided
+            self.seq_ids = (
+                bins_in_net  # Store sequence IDs if no abundance table is provided
+            )
 
 
-class AbdTableHandler():
+class AbdTableHandler:
 
     def __init__(self, config):
         """
@@ -180,7 +203,9 @@ class AbdTableHandler():
 
         # Identify last column as taxonomy column
         self.taxonomy_column_name = df.columns[-1]
-        non_numeric = pd.to_numeric(df[self.taxonomy_column_name], errors='coerce').isna().any()
+        non_numeric = (
+            pd.to_numeric(df[self.taxonomy_column_name], errors="coerce").isna().any()
+        )
 
         if not non_numeric:
             logger.error(
@@ -201,28 +226,29 @@ class AbdTableHandler():
             if missing_seq_ids:
                 for c in missing_seq_ids:
                     if not isinstance(c, str):
-                        missing_seq_ids.remove(c) ; missing_seq_ids.add(str(c))
-                missing_seq_ids_str = ', '.join(missing_seq_ids)
+                        missing_seq_ids.remove(c)
+                        missing_seq_ids.add(str(c))
+                missing_seq_ids_str = ", ".join(missing_seq_ids)
                 logger.warn(
                     "There are sequence ids on your abundance table for which there are no"
                     f"bins provided in the `bins_fasta` folder: {missing_seq_ids_str}"
                 )
 
             elif missing_bins:
-                missing_bins_str = ', '.join(missing_bins)
-                logger.warn(f"Bin names do not match with those in the abundance table: {missing_bins_str}")
+                missing_bins_str = ", ".join(missing_bins)
+                logger.warn(
+                    f"Bin names do not match with those in the abundance table: {missing_bins_str}"
+                )
 
     def load_metadata_file(self, config):
         """Load metadata file if provided"""
         # Metadata file
         metadata_file = config.yaml.get("metadata_file", {}).get("file_path")
         self.metadata_file = (
-            os.path.join(config.base_dir, metadata_file)
-            if metadata_file
-            else None
+            os.path.join(config.base_dir, metadata_file) if metadata_file else None
         )
         if metadata_file is not None:
-            df = pd.read_csv(self.metadata_file, sep="\t", index_col = 0, header=None)
+            df = pd.read_csv(self.metadata_file, sep="\t", index_col=0, header=None)
             self.metadata_variables = df.index.to_list()
 
         # microbetag data product to enable running FlashWeave; the user will never have to worry for it.
@@ -259,7 +285,7 @@ class BinsHandler:
             raise ValueError("Invalid path provided for the bins FASTA files.")
 
 
-class SeedComplementarityHandler():
+class SeedComplementarityHandler:
 
     def __init__(self, config):
         """
@@ -268,7 +294,7 @@ class SeedComplementarityHandler():
         :param config: Configuration object containing user preferences and paths.
         """
 
-        self.base_dir  = config.base_dir
+        self.base_dir = config.base_dir
         self.bins_path = config.bins_path
 
         # Get seed complementarity value, defaulting to True if invalid
@@ -288,38 +314,48 @@ class SeedComplementarityHandler():
         self.seeds_paths(config)
         self._validate_model_namespace(config)
 
-
     def _validate_input_type(self, config):
         """Validates and sets the input type for seed complementarity reconstructions."""
-        input_value = config.yaml.get("input_type_for_seed_complementarities", {}).get("value")
+        input_value = config.yaml.get("input_type_for_seed_complementarities", {}).get(
+            "value"
+        )
 
         if not input_value:
-            logger.error("Please select an input type for 'input_type_for_seed_complementarities'.")
+            logger.error(
+                "Please select an input type for 'input_type_for_seed_complementarities'."
+            )
             sys.exit(1)
 
-        allowed_values = config.yaml.get("input_type_for_seed_complementarities", {}).get("value_from", [])
+        allowed_values = config.yaml.get(
+            "input_type_for_seed_complementarities", {}
+        ).get("value_from", [])
         if input_value not in allowed_values:
-            logger.error(f"Error: Input value '{input_value}' is not among the allowed values: {allowed_values}")
+            logger.error(
+                f"Error: Input value '{input_value}' is not among the allowed values: {allowed_values}"
+            )
             sys.exit(1)
 
         self.input_for_recon_type = input_value
         self.users_models = input_value == "models"
-
 
     def _set_reconstruction_files(self, config):
         """Determines the correct path for sequence files needed for reconstructions."""
         if self.input_for_recon_type == "bins_fasta":
             self.for_reconstructions = self.bins_path
         else:
-            reconstr_files = config.yaml.get("sequence_files_for_reconstructions", {}).get("dir_path")
+            reconstr_files = config.yaml.get(
+                "sequence_files_for_reconstructions", {}
+            ).get("dir_path")
             if reconstr_files is None:
-                raise ValueError("Please provide a valid path for sequence files for reconstructions.")
+                raise ValueError(
+                    "Please provide a valid path for sequence files for reconstructions."
+                )
             self.for_reconstructions = os.path.join(self.base_dir, reconstr_files)
-
 
     def _validate_model_namespace(self, config):
         """Validates whether the model namespace matches the selected reconstruction tool."""
         import cobra
+
         if not self.users_models:
             return  # No user models provided, no need to check
 
@@ -327,7 +363,9 @@ class SeedComplementarityHandler():
         try:
             model_files = os.listdir(self.for_reconstructions)
             if not model_files:
-                raise ValueError("No models found in the provided reconstruction directory.")
+                raise ValueError(
+                    "No models found in the provided reconstruction directory."
+                )
 
             random_model = os.path.join(self.for_reconstructions, model_files[0])
             model = cobra.io.read_sbml_model(random_model)
@@ -348,7 +386,9 @@ class SeedComplementarityHandler():
                     "but the selected reconstruction tool ('carveme') expects BiGG namespace."
                 )
             elif self.genre_reconstruction_with != "modelseedpy":
-                logger.warning("WARNING: Namespace mismatch detected. Switching to 'modelseedpy'.")
+                logger.warning(
+                    "WARNING: Namespace mismatch detected. Switching to 'modelseedpy'."
+                )
                 self.genre_reconstruction_with = "modelseedpy"
 
         else:  # Models are expected to use BiGG namespace
@@ -358,14 +398,18 @@ class SeedComplementarityHandler():
                     "expects ModelSEED namespace (prefix 'cpd'). Please check your configuration."
                 )
             elif self.genre_reconstruction_with != "carveme":
-                logger.warning("WARNING: Assuming BiGG namespace. Switching to 'carveme'.")
+                logger.warning(
+                    "WARNING: Assuming BiGG namespace. Switching to 'carveme'."
+                )
                 self.genre_reconstruction_with = "carveme"
 
     def seeds_paths(self, config):
         """Set pathways for seeds related files and folders"""
 
         self.gene_predictor = config.yaml.get("gene_predictor", {}).get("value")
-        self.genre_reconstruction_with = config.yaml.get("genre_reconstruction_with", {}).get("value")
+        self.genre_reconstruction_with = config.yaml.get(
+            "genre_reconstruction_with", {}
+        ).get("value")
 
         if self.users_models is False:
             # Directory for tmp reconstruction files
@@ -380,20 +424,26 @@ class SeedComplementarityHandler():
 
         # Directory for seeds complementarity
         seedset_dir = config.yaml.get("prev_calc_seed_sets", {}).get("dir_path")
-        self.seeds  = seedset_dir or os.path.join(config.output_dir, "seeds_complementarity")
+        self.seeds = seedset_dir or os.path.join(
+            config.output_dir, "seeds_complementarity"
+        )
         os.makedirs(self.seeds, exist_ok=True)
 
-        self.prev_conf     = config.yaml.get("prev_conf", {}).get("file_path")
+        self.prev_conf = config.yaml.get("prev_conf", {}).get("file_path")
         self.prev_nonseeds = config.yaml.get("prev_nonseeds", {}).get("file_path")
+        self.skip_sets = self.prev_conf is not None and self.prev_nonseeds is not None
 
         self.seed_complements = os.path.join(self.seeds, "seed_complements.pckl")
         self.phylomint_scores = os.path.join(self.seeds, "phylomint_scores.tsv")
 
-        self.module_seeds    = os.path.join(self.seeds, "kegg_module_related_seeds.pckl")
-        self.module_nonseeds = os.path.join(self.seeds, "kegg_module_related_nonseeds.pckl")
+        self.module_seeds = os.path.join(self.seeds, "kegg_module_related_seeds.pckl")
+        self.module_nonseeds = os.path.join(
+            self.seeds, "kegg_module_related_nonseeds.pckl"
+        )
+
 
 def manta_input_net(config):
-    """ Build intermediate network file as input for manta """
+    """Build intermediate network file as input for manta"""
 
     manta_input = build_base_graph(config)
     manta_input_serial = convert_to_json_serializable(manta_input)
@@ -405,10 +455,10 @@ def manta_input_net(config):
 class Emojis:
     def __init__(self) -> None:
         self.WARNING_EMOJI = "\u2757"
-        self.TADA_EMOJI = "\"\U0001F389\""
-        self.RED_CROSS_EMOJI = "\u274C"
+        self.TADA_EMOJI = '"\U0001f389"'
+        self.RED_CROSS_EMOJI = "\u274c"
         self.GREEN_CHECK_EMOJI = "\u2705"
-        self.ANNOUNCEMET = "\u1F4E3"
+        self.ANNOUNCEMET = "\u1f4e3"
 
 
 # [NOTE] OUT OF SCOPE BUT CURRENTLY USEFUL
@@ -418,8 +468,14 @@ def local_seed_url():
     Function to be used out of the pipeline
 
     """
-    from .seed_complementarity import load_seed_complement_files, build_url_with_seed_complements
-    kmap = load_seed_complement_files("/microbetag/mtg_maps_models/mappings/kegg_mappings/")
+    from .seed_complementarity import (
+        load_seed_complement_files,
+        build_url_with_seed_complements,
+    )
+
+    kmap = load_seed_complement_files(
+        "/microbetag/mtg_maps_models/mappings/kegg_mappings/"
+    )
 
     output_folder = "/data/entero_klebsiella/seeds_complementarity/"
 
@@ -437,19 +493,30 @@ def local_seed_url():
             # V
             complements = seed_complements_dict[id_x][id_y]
             print(complements)
-            complements_map = kmap[kmap['modelseed'].isin(complements)]
+            complements_map = kmap[kmap["modelseed"].isin(complements)]
             # S
-            maps_in = list(kmap[kmap['modelseed'].isin(complements)]["map"].unique())
+            maps_in = list(kmap[kmap["modelseed"].isin(complements)]["map"].unique())
             # SDA
             for kegg_map in maps_in:
                 #
                 beneficiarys_nonseed = non_seed_sets.loc[id_x].to_list()[0]
-                beneficiarys_nonseeds_map = kmap[kmap['modelseed'].isin(beneficiarys_nonseed)]
+                beneficiarys_nonseeds_map = kmap[
+                    kmap["modelseed"].isin(beneficiarys_nonseed)
+                ]
                 # Run
-                ksc = list(complements_map[complements_map["map"] == kegg_map]["kegg_compound"])
-                msc = ";".join(set(complements_map[complements_map["map"] == kegg_map]["modelseed"]))
-                ns = list(beneficiarys_nonseeds_map[beneficiarys_nonseeds_map["map"] == kegg_map]["kegg_compound"])
+                ksc = list(
+                    complements_map[complements_map["map"] == kegg_map]["kegg_compound"]
+                )
+                msc = ";".join(
+                    set(
+                        complements_map[complements_map["map"] == kegg_map]["modelseed"]
+                    )
+                )
+                ns = list(
+                    beneficiarys_nonseeds_map[
+                        beneficiarys_nonseeds_map["map"] == kegg_map
+                    ]["kegg_compound"]
+                )
                 surl = build_url_with_seed_complements(ksc, ns, kegg_map)
                 print(surl)
             print("====")
-
