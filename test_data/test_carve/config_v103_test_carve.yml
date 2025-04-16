@@ -367,7 +367,7 @@ network_clustering:
   type: bool
   required: false
 
-manta_network:
+prev_clustered_network:
   file_path: 
   description: >
     In case you have performed manta already in a previous run of microbetag or as a stand-alone tool, 

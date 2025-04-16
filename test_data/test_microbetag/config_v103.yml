@@ -52,6 +52,16 @@ edge_list:
     - edgelist.csv
   type: string
 
+sequence_id_taxonomy_map:
+  file_path: 
+  description: >
+    A file
+  required: 
+    value: false
+    when: 
+  examples:
+    - 
+  type: string
 
 
 # -----
@@ -98,7 +108,7 @@ pathway_complement_percentage:
 
 # IMPORTANT NOTE: To save essential time for this test, we use a previously calculated 3-column KO file. You may run the test_kegg_annotation to make sure this step runs fine
 ko_merged_file:
-  file_path: input_files/ko_merged.txt.gz
+  file_path: 
   description: "A merged 3-column file with bins, contigs and the annotated KO term for all your genomes/bins. Needs to have a header and keep this order. You may have this from a previous microbetag run, or from annotations outside the microbetag software. 
   Here is a example: 
   bin_id	            contig_id	                                                KO
@@ -145,6 +155,33 @@ input_type_for_seed_complementarities:
     If none of the above is available, then set this parameter as bins_fasta and leave the sequence_files_for_reconstructions blank."
   type: string
   required: true
+
+
+prev_calc_seed_sets:
+  dir_path: 
+  required: false 
+  description: >
+    Path to directory with SeedSetDic.json and nonSeedSetDic.json files if previously calculated for the genomes under study
+    Leave empty if no previously calculated dictionaries.
+  type: string
+
+
+prev_conf: 
+
+  file_path:
+  description: >
+
+  required:
+  type:
+
+
+prev_nonseeds:
+
+  file_path:
+  description: >
+    
+  required:
+  type:
 
 
 # -----

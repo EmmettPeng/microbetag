@@ -27,15 +27,10 @@ class testMicrobetag(unittest.TestCase):
 
         params = ["microbetag", "--config", config_file]
         cmd = " ".join(params)
-        os.system(
-            cmd
-        )
+        os.system(cmd)
 
         output_files = os.listdir(output_dir)
-        self.assertTrue(
-            any(x for x in output_files if x.endswith(".cx2"))
-        )
-
+        self.assertTrue(any(x for x in output_files if x.endswith(".cx2")))
 
 
 if __name__ == "__main__":

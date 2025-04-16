@@ -108,13 +108,13 @@ input_type_for_seed_complementarities:
 # manta 
 # -----
 network_clustering:
-  value: false
+  value: true
   description:
   type: bool
   required: false
 
 prev_clustered_network:
-  file_path: 
+  file_path: input_files/manta_annotated.cyjs
   description: >
     In case you have performed manta already in a previous run of microbetag or as a stand-alone tool, 
     you may provide directly its findings in CYJS format.
