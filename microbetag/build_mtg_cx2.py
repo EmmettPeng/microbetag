@@ -29,9 +29,9 @@ from .seed_complementarity import (
 
 logger = mtg_logger(__name__)
 COMPLEMENTARITY_TYPE, COMPLEMENTING = "complementarity", "(completed by)"
-COOCCURENCE_DEPLETION = "cooccurrence/depletion"
-COOCCURRENCE, COOCCURYING = "cooccurrence", "(cooccurs with)"
-DEPLETION, DEPLETING = "depletion", "(depletes)"
+COOCCURENCE_DEPLETION = "co-occurrence/co-exclusion"
+COOCCURRENCE, COOCCURYING = "co-occurrence", "(cooccurs with)"
+DEPLETION, DEPLETING = "co-exclusion", "(negatively correlated with)"
 
 
 # -----------------------------
@@ -45,18 +45,21 @@ def taxonomy_levels(node):
 
     """
     try:
-        if len(node["v"]["microbetag::taxonomy"].split(";")) == 7:
-            (
-                node["v"]["taxonomy::domain"],
-                node["v"]["taxonomy::phylum"],
-                node["v"]["taxonomy::class"],
-                node["v"]["taxonomy::order"],
-                node["v"]["taxonomy::family"],
-                node["v"]["taxonomy::genus"],
-                node["v"]["taxonomy::species"],
-            ) = node["v"]["microbetag::taxonomy"].split(";")
-    except:
-        pass
+        levels = node["v"]["microbetag::taxonomy"].split(";")
+        if len(levels) == 7:
+            ranks = ["domain", "phylum", "class", "order", "family", "genus", "species"]
+            levels = [lvl.strip() for lvl in levels]
+
+            for rank, value in zip(ranks, levels):
+                node["v"][f"taxonomy::{rank}"] = value
+
+            # Find last non-empty level
+            for i in reversed(range(7)):
+                if levels[i] and levels[i].split("_")[-1].strip():
+                    node["v"]["microbetag::ncbi-tax-level"] = ranks[i]
+                    break
+    except Exception as e:
+        pass  # or log the exception for debugging
 
 
 def init_nodes_and_edges(edgelist, seq_id_to_taxonomy):
@@ -127,6 +130,8 @@ def update_with_phen_traits(config, nodes, node_names):
             continue  # Skip if bin_name is not in node_names
 
         node = nodes[node_index]
+
+        node["v"]["microbetag::ncbi-tax-level"] = "mspecies"
 
         for trait, values in phen_attributes.items():
             node["v"][f"phendb::{trait}"] = values["presence"]

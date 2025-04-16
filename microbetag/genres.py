@@ -260,16 +260,15 @@ class GEMSReconstruction:
                     FGS,
                     "-s",
                     bin_file,
-                    " -o",
+                    "-o",
                     faa,
-                    "-w  1",
+                    "-w",
+                    "1",
                     "-p",
                     str(self.config.threads),
                     "-t",
                     COMPLETE,
                 ]
-                # fgs_command = " ".join(fgs_params)
-                # os.system(fgs_command)
                 try:
                     _ = subprocess.run(
                         fgs_params, capture_output=True, text=True, check=True

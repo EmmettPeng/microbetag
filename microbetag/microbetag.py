@@ -44,7 +44,7 @@ def run_microbetag(config):
         )
     elif not os.path.exists(config.network) or os.path.getsize(config.network) == 0:
         logger.info(
-            "[STEP] NETWORK INFERENCE WITH FLASHWEAVE"
+            "[STEP] NETWORK INFERENCE WITH FLASHWEAVE. "
             "Using the abundance table provided, microbetag is about to build a co-occurrence network.\n"
         )
         run_flashweave(config)
@@ -83,7 +83,7 @@ def run_microbetag(config):
 
                 bin_filename = os.path.basename(bin_fa)
 
-                bin_id, extension = os.path.splitext(bin_filename)
+                bin_id, _ = os.path.splitext(bin_filename)
                 bin_id = bin_id.split("/")[-1]
 
                 bin_fa = os.path.join(config.bins_path, bin_fa)
@@ -205,9 +205,11 @@ def run_microbetag(config):
 
             # Reconstruct step
             if config.genre_reconstruction_with == "modelseedpy":
+                logger.info("Build draft reconstructions with ModelSEEDpy")
                 build_genres.modelseed_reconstructions()
 
             elif config.genre_reconstruction_with == "carveme":
+                logger.info("Build draft reconstructions with carveme")
                 build_genres.carve_reconstructions()
 
             else:
