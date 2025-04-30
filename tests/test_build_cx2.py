@@ -10,13 +10,12 @@ from microbetag.build_mtg_cx2 import mtg_annotate_network
 
 
 # Get the directory of the current script
-root_dir    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-test_data   = os.path.join(root_dir, "test_data", "test_build_cx2")
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+test_data = os.path.join(root_dir, "test_data", "test_build_cx2")
 config_file = os.path.join(test_data, "config_v103.yml")
 
 
 class TestBuildingCX2(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
 
@@ -24,13 +23,11 @@ class TestBuildingCX2(unittest.TestCase):
         # cls.pseudo_cx_serialized = None
 
         # Check if config does have what's necessary for the build_pseudo_cx()
-        with open(config_file, 'r') as yaml_file:
+        with open(config_file, "r") as yaml_file:
             cls.config = Config(yaml.safe_load(yaml_file), config_file)
 
-
     def test_build_pseudo_cx(self):
-        """ Building the pseudo cx network with the microbetag annotations """
-
+        """Building the pseudo cx network with the microbetag annotations"""
 
         mtg_annotate_network(self.config)
 
@@ -48,7 +45,6 @@ class TestBuildingCX2(unittest.TestCase):
 
     #     TestBuildingCX2.pseudo_cx_serialized = pseudo_cx_serialized
     #     self.assertTrue(len(annotated_network) == 10)
-
 
     # def test_convert_pseudo_cx_with_ndex2(self):
     #     """ Converting the pseudo cx microbetag annotated network to an actual CX2 format """
@@ -68,6 +64,3 @@ class TestBuildingCX2(unittest.TestCase):
 if __name__ == "__main__":
 
     unittest.main()
-
-
-

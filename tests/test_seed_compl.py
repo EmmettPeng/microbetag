@@ -20,7 +20,6 @@ maps = MappingPaths()
 
 
 class Config:
-
     def __init__(self):
         # If False, then microbetag should have built GENREs before running run_seed_complementarity()
         # To use the run_seed_complementarity() on its own, this would have to be always True
@@ -48,7 +47,6 @@ class Config:
 
 
 class TestSeedComplementarity(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         cls.config = Config()

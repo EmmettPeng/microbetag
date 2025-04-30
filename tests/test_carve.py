@@ -21,7 +21,7 @@ test_data = os.path.join(root_dir, "test_data", "test_build_genres")
 
 # Get configuration based on the config YAML file
 config_file = os.path.join(test_data, "config_v103_test_carve.yml")
-with open(config_file, 'r') as yaml_file:
+with open(config_file, "r") as yaml_file:
     config = Config(yaml.safe_load(yaml_file), config_file)
 
 """
@@ -33,9 +33,7 @@ In this example, the user is using the carveme to build the GEMs, along with the
 """
 
 
-
 class testBuildGemWithCarve(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
 
@@ -48,12 +46,10 @@ class testBuildGemWithCarve(unittest.TestCase):
         """
         testBuildGemWithCarve.GEMSReconstruction = GEMSReconstruction(self.config)
 
-
     def test2_runCarveme(self):
 
         self.GEMSReconstruction.carve_reconstructions()
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -7,12 +7,12 @@ cwd = os.getcwd()
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 phen_classes = os.path.join(root_dir, "microbetag/mtg_maps_models/phenDB/classes/")
 
-test_data  = os.path.join(root_dir, "test_data", "test_phenotrex")
+test_data = os.path.join(root_dir, "test_data", "test_phenotrex")
 output_dir = os.path.join(test_data, "output_files")
-bins       = os.path.join(test_data, "input_files")
+bins = os.path.join(test_data, "input_files")
+
 
 class Config:
-
     def __init__(self):
 
         os.makedirs(output_dir, exist_ok=True)
@@ -29,7 +29,6 @@ class Config:
 
 
 class TestPhenotrex(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
 
@@ -44,9 +43,9 @@ class TestPhenotrex(unittest.TestCase):
         result = subprocess.check_output(cmd, shell=True, text=True)
         nlines = int(result.split(" ")[0])
 
-        self.assertTrue( nlines == 2 )
+        self.assertTrue(nlines == 2)
 
-    def  testPredict(self):
+    def testPredict(self):
 
         phenotrex_predict(config=self.config)
 

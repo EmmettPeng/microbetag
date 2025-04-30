@@ -22,7 +22,6 @@ output_dir = os.path.join(test_data, "mtg_complete_output")
 
 
 class testMicrobetag(unittest.TestCase):
-
     def testMicrobetagRun(self):
 
         params = ["microbetag", "--config", config_file]

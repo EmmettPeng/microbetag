@@ -7,27 +7,29 @@ from microbetag.tools import run_manta
 from microbetag.config import load_abundance
 
 # Directories
-root_dir   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-test_data  = os.path.join(root_dir, "test_data", "test_manta")
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+test_data = os.path.join(root_dir, "test_data", "test_manta")
 output_dir = os.path.join(test_data, "output_files")
 
 # Using abundance table to map sequence ids to taxonomies ==  USED FOR THE MS // TAKES TOO LONG, REPLACE WITH SHORTER FILES
 input_abd_table_dir = os.path.join(test_data, "input_files", "based_on_abd_table")
-abd_table           = os.path.join(input_abd_table_dir, "thirty_Samples.tsv")  # "plaque_abd_tab.tsv"
-net_edgelist        = os.path.join(input_abd_table_dir, "edgelist.csv")    # "plaque_edgelist.tsv"
+abd_table = os.path.join(
+    input_abd_table_dir, "thirty_Samples.tsv"
+)  # "plaque_abd_tab.tsv"
+net_edgelist = os.path.join(
+    input_abd_table_dir, "edgelist.csv"
+)  # "plaque_edgelist.tsv"
 
 # Using a sequence to taxonomy file to map sequence ids to taxonomies
-input_net_dir    = os.path.join(test_data, "input_files", "based_on_net")
-edgelist         = os.path.join(input_net_dir, "edgelist.csv")
+input_net_dir = os.path.join(test_data, "input_files", "based_on_net")
+edgelist = os.path.join(input_net_dir, "edgelist.csv")
 seq_tax_map_file = os.path.join(input_net_dir, "seq2taxonomy.tsv")
 
 
-
 class NetConfig:
-
     def __init__(self):
 
-        """ Config-like class for the case a network is being used """
+        """Config-like class for the case a network is being used"""
 
         # Specify case to use
         self.network = edgelist
@@ -44,10 +46,9 @@ class NetConfig:
 
 
 class AbdTableConfig:
-
     def __init__(self):
 
-        """ Config-like class for the case an abundance table is being used """
+        """Config-like class for the case an abundance table is being used"""
 
         # Specify case to use
         self.abundance_table = abd_table
@@ -59,7 +60,7 @@ class AbdTableConfig:
             self.seq_to_taxon_df,
             self.sequence_id_column_name,
             self.taxonomy_column_name,
-            _  # delimeter
+            _,  # delimeter
         ) = load_abundance(self.abundance_table)
 
         self.seq_ids = self.seq_to_taxon_df["sequence_id"].unique().tolist()
@@ -84,7 +85,6 @@ class TestManta(unittest.TestCase):
         run_manta(self.net_config)
         print("Manta test using sequence to taxonomy file ran successfully")
 
-
     def testMantaAbdTable(self):
         """
         Test with an abundance table as input fille;
@@ -96,11 +96,11 @@ class TestManta(unittest.TestCase):
 
         run_manta(self.abd_config)
 
-        print("Manta test using abundance table to map sequence id to taxonomy ran successfully")
-
+        print(
+            "Manta test using abundance table to map sequence id to taxonomy ran successfully"
+        )
 
 
 if __name__ == "__main__":
 
     unittest.main()
-
