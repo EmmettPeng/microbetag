@@ -135,7 +135,7 @@ gapfill_media:
 # Precalculations only -- in the build GENREs test this needs to be true so the Config class does not fail when 
 # trying to find the abundance table or a network
 # -----
-precalulations_only:
+precalculations_only:
   value: true
   description: "If true, only the precalculations will be performed. 
   This means that neither an abundance table is nor an already available network will be considered, only the list of bins/MAGs; provided in the bins_fasta parameter.

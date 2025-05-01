@@ -32,7 +32,7 @@ threads:
 # -----
 # Precalculations only
 # -----
-precalulations_only:
+precalculations_only:
   value: true
   description: "If true, only the precalculations will be performed. 
   This means that neither an abundance table is nor an already available network will be considered, only the list of bins/MAGs; provided in the bins_fasta parameter.

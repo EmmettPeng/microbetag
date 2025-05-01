@@ -1,5 +1,7 @@
-import os, sys
+import os
+import sys
 import glob
+import time
 import shutil
 
 import subprocess
@@ -38,7 +40,7 @@ def run_seed_complementarity(config):
                 dest_path = os.path.join(config.genres, os.path.basename(file))
                 try:
                     shutil.copy(file, dest_path)
-                except:
+                except Exception:
                     pass
         else:
             all_files = [
@@ -86,7 +88,7 @@ def hmmsearch(params: List):
 
     try:
         os.system(cmd)
-    except:
+    except Exception:
         logger.warning("Something wrong with KEGG hmmsearch!")
 
 
@@ -125,8 +127,7 @@ def run_prodigal(fasta, basename, outdir):
         logger.info("ORFs to be predicted for bin: %s", basename)
         try:
             os.system(cmd)
-            print("ok. ")
-        except:
+        except Exception:
             logger.warning("Something wrong with prodigal annotation!")
 
 
@@ -200,7 +201,7 @@ def phenotrex_genotype(config):
 
         # Build genotypes
         compute_genotype_params = []
-        if config.cwd != "/microbetag":
+        if not config.cwd.startswith("/microbetag"):
             compute_genotype_params += ["conda run -n phendb"]
 
         compute_genotype_params += [
@@ -213,7 +214,7 @@ def phenotrex_genotype(config):
             bin_files_in_a_row,
         ]
         # Container - case
-        if config.cwd == "/microbetag":
+        if config.cwd.startswith("/microbetag"):
 
             sk_init_version = get_library_version("scikit-learn")
             pheno_init_version = get_library_version("phenotrex")
@@ -271,7 +272,7 @@ def phenotrex_predict(config):
 
             predict_traits_params = []
             # Local case
-            if config.cwd != "/microbetag":
+            if not config.cwd.startswith("/microbetag"):
                 predict_traits_params = ["conda run -n phendb"]
             # All cases: local and container
             predict_traits_params += [
@@ -302,11 +303,6 @@ def phenotrex_predict(config):
         )
         sys.exit(0)
 
-    # IN CASE OF CONTAINER CONSIDER..
-    # if sk_init_version != sk_required_version:
-    #     cmd = "".join(["python3 -m pip install scikit-learn==", sk_init_version])
-    #     os.system(cmd)
-
 
 def run_manta(config):
     import time
@@ -328,7 +324,7 @@ def run_manta(config):
 
     # Run manta
     try:
-        m1 = time.time()
+        t1 = time.time()
         if os.system(manta_command) != 0:
             e = """\
                 The manta clustering algorithm failed.
@@ -340,8 +336,8 @@ def run_manta(config):
             config.network_clustering = False
         else:
             logger.info("""manta ran fine.""")
-        m2 = time.time()
-        time = " ".join(["Network clustering with manta took:", str(m2 - m1), "sec"])
+        t2 = time.time()
+        time = " ".join(["Network clustering with manta took:", str(t2 - t1), "sec"])
         logger.info(time)
 
     except Exception as e:
@@ -351,13 +347,15 @@ def run_manta(config):
 
 def run_flashweave(config):
 
-    # Checking for format support.
-    ensure_flashweave_format(conf=config)
-
     # Run FlashWeave
     from julia.api import Julia
 
     logger.info("Fix FlashWeave arguments from config.")
+
+    # Checking for format support.
+    if not config.onthefly:
+        ensure_flashweave_format(conf=config)
+
     pair_args = set()
     for arg, values in config.flashweave_args.items():
         if values["required"]:
@@ -376,11 +374,18 @@ def run_flashweave(config):
                     pair_args.add((arg, values["value"]))
 
     pair_args.add(("transposed", "true"))
+
     learn_in = ",".join(f"{arg[0]}={arg[1]}" for arg in pair_args)
 
-    logger.info("Init Julia through Python")
+    logger.info("Init Julia through Python!")
+    logger.info("----------------------------   LEARN IN FOR FLASHWEAVE -------------------")
+    t1 = time.time()
     jl = Julia(compiled_modules=False)
+    t2 = time.time()
+    logger.info(str(t2 - t1))
     jl.using("FlashWeave")
+    t3 = time.time()
+    logger.info(str(t3 - t2))
 
     # Run FlashWeave based on presence/absence of a metadata file
     if config.metadata_file:
@@ -405,6 +410,7 @@ def run_flashweave(config):
 
 def run_faprotax(config):
     """Run FAPROTAX collapse_table.py script"""
+
     faprotax_params = [
         "python3",
         config.faprotax_script,
@@ -424,12 +430,13 @@ def run_faprotax(config):
         config.faprotax_sub_tables,
     ]
     faprotax_command = " ".join(faprotax_params)
+
     try:
         process = subprocess.Popen(
             faprotax_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        stdout, stderr = process.communicate()
-    except:
+        _, _ = process.communicate()
+    except Exception:
         raise TypeError(
             f"Something went wrong when running FAPROTAX with your abuandance table: {config.abundance_table}"
         )

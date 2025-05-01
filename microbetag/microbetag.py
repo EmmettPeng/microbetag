@@ -15,13 +15,33 @@ Output:
 __version__ = "1.0.3"
 __author__ = "Haris Zafeiropoulos <haris.zafeiropoulos@kuleuven.be>"
 
-import os, sys
+import os
+import sys
 import yaml
-
 import argparse
 
-from .utils import *
-from .tools import *
+from .utils import (
+    mtg_logger,
+    merge_ko,
+    load_merged_ko_file,
+    bin_kos_to_file,
+    ko_list_parser,
+
+)
+from .tools import (
+    run_flashweave,
+    run_faprotax,
+    phenotrex_genotype,
+    phenotrex_predict,
+    run_prodigal,
+    kegg_annotation,
+    run_seed_complementarity,
+    run_manta,
+)
+from .db import (
+    get_phen_traits,
+    # something for path compls
+)
 from .config import Config
 from .genres import GEMSReconstruction
 from .helpers import manta_input_net
@@ -52,25 +72,30 @@ def run_microbetag(config):
     # ----------------
     # FAPROTAX
     # ----------------
-    if config.abundance_table is not None:
+    if config.abundance_table is not None and config.faprotax:
         logger.info("[STEP] LITERATURE ANNOTATION WITH FAPROTAX")
         run_faprotax(config)
 
     # ----------------
     # phen annotations
     # ----------------
-    if config.bins_ids is not None:
-        logger.info("[STEP] PREDICTING PHENOTYPIC TRAITS")
-        phenotrex_genotype(config=config)
-        phenotrex_predict(config=config)
+    if config.phen_traits:
+        if config.bins_ids is not None and not config.onthefly:
+            logger.info("[STEP] PREDICTING PHENOTYPIC TRAITS")
+            phenotrex_genotype(config=config)
+            phenotrex_predict(config=config)
+
+        elif config.onthefly:
+            get_phen_traits(config=config)
 
     # ----------------
     # Prodigal - ORF prediction
     # ----------------
     if (
         config.pathway_complementarity or config.seed_complementarity
-    ) and config.ko_merged is None:
+    ) and config.ko_merged is None and not config.onthefly:
         if len(os.listdir(config.prodigal)) != len(config.bins_ids):
+
             logger.info("[STEP  ] PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
 
             if config.bin_filenames is None:
@@ -105,7 +130,7 @@ def run_microbetag(config):
         # KEGG annotation - based on the DiTing implementation // required in case of pathway complementarities
         # ----------------
 
-        if config.ko_merged is None:
+        if config.ko_merged is None and not config.onthefly:
 
             logger.info("[STEP ] KEGG ANNOTATION OF THE ORFs \n")
 
@@ -142,23 +167,31 @@ def run_microbetag(config):
             # Make the 3-columns files with all bins and their KOs
             merge_ko(config.kegg_pieces_dir, config.ko_merged)
 
-        else:
+        elif not config.onthefly:
+
             logger.info("A 3-col KEGG annotation file already available.")
             print("A 3-col KEGG annotation file already available.")
 
         # ----------------
         # Extract pathway complementarities
         # ----------------
-        pivot_df = load_merged_ko_file(config.ko_merged)  # Load ko_merged.txt
 
-        if not os.path.exists(config.alts_file) or not os.path.exists(
-            config.compl_file
-        ):
+        if config.onthefly:
+            # TODO (Haris Zafeiropoulos, 2025-05-01):
+            print("needs to be buiilts")
 
-            print("[STEP ] GET PATHWAY COMPLEMENTS ")
-            print(pivot_df)
-            # bin_kos_per_module, alt_to_gapfill, complements =
-            _, _ = export_pathway_complementarities(config, pivot_df)
+        else:
+
+            pivot_df = load_merged_ko_file(config.ko_merged)  # Load ko_merged.txt
+
+            if not os.path.exists(config.alts_file) or not os.path.exists(
+                config.compl_file
+            ):
+
+                print("[STEP ] GET PATHWAY COMPLEMENTS ")
+                print(pivot_df)
+                # bin_kos_per_module, alt_to_gapfill, complements =
+                _, _ = export_pathway_complementarities(config, pivot_df)
 
     # ----------------
     # Seed complementarity
@@ -224,7 +257,7 @@ def run_microbetag(config):
     # ----------------
     # Network clustering
     # ----------------
-    if config.network_clustering and config.prev_manta_net is None:
+    if config.net_cluster and config.prev_manta_net is None:
 
         logger.info(
             """[STEP]: network clustering using manta and the abundance table"""
@@ -303,6 +336,7 @@ def main():
     try:
         with open(args.config, "r") as yaml_file:
             config = Config(yaml.safe_load(yaml_file), args.config)
+
     except yaml.YAMLError:
         print_config_message()
         sys.exit(1)

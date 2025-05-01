@@ -134,7 +134,7 @@ def update_with_phen_traits(config, nodes, node_names):
         node["v"]["microbetag::ncbi-tax-level"] = "mspecies"
 
         for trait, values in phen_attributes.items():
-            node["v"][f"phendb::{trait}"] = values["presence"]
+            node["v"][f"phendb::{trait}"]      = values["presence"]
             node["v"][f"phendbScore::{trait}"] = values["confidence"]
 
 
@@ -178,12 +178,14 @@ def update_with_manta(config, nodes, node_names):
 
     # Update nodes with cluster and assignment data
     for bin_name, cluster in manta_net.nodes(data="cluster"):
+
         try:
             nodes[node_names.index(bin_name)]["manta::cluster"] = cluster
         except ValueError:
             print(f"Warning: {bin_name} not found in node names.")
 
     for bin_name, assignment in manta_net.nodes(data="assignment"):
+
         try:
             nodes[node_names.index(bin_name)]["manta::assignment"] = assignment
         except ValueError:
@@ -532,13 +534,13 @@ def mtg_annotate_network(config):
     if len(os.listdir(config.faprotax_sub_tables)) > 0:
         update_with_faprotax_traits(config, nodes, node_names)
 
-    if os.path.exists(config.manta_net):
+    if config.net_cluster:  # os.path.exists(config.manta_net):
         manta_layout = update_with_manta(config, nodes, node_names)
 
-    if os.path.exists(config.compl_file):
+    if config.path_compl:  # os.path.exists(config.compl_file):
         pathway_complements(config, edgelist_df, node_names, edges)
 
-    if os.path.exists(config.seed_complements):
+    if config.seed_compl:  # os.path.exists(config.seed_complements):
         seed_complements(config, edgelist_df, node_names, edges)
 
     net_cx = build_cx2(nodes, edges)

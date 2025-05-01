@@ -3,11 +3,11 @@ pytest-shutil
 biom-format
 cobra==0.29.0
 numpy==1.24.4
-pandas==2.0.3
+pandas==2.2.2
 networkx==3.1
 julia==0.6.2
 ndex2==3.10.0
-PyYAML==6.0.1
+PyYAML>=5.4.1   
 pyshorteners==1.0.1
 scipy==1.10.1
 colorlog==6.9.0

@@ -1,5 +1,6 @@
 # System
-import os, sys
+import os
+import sys
 import json
 import pickle
 import tarfile
@@ -20,6 +21,22 @@ from .PhyloMint.lib.CalculateIndexes import calculate_scores, extract_complement
 logger = mtg_logger(__name__)
 
 
+def _generate_fixed_pairwise_comparisons(fixed_item, patric_ids_of_interest):
+    """Generate and return two lists: one with the fixed item in the first position and one with it in the second."""
+    fixed_seedset_as_A = set()
+    fixed_nonseedset_as_A = set()
+
+    # Generate pairs where fixed_item is in the first position
+    for B in patric_ids_of_interest:
+        fixed_seedset_as_A.add((fixed_item, B))
+
+    # Generate pairs where fixed_item is in the second position
+    for A in patric_ids_of_interest:
+        fixed_nonseedset_as_A.add((A, fixed_item))
+
+    return list(fixed_seedset_as_A), list(fixed_nonseedset_as_A)
+
+
 class ExportSeedComplementarities:
     """
     Class to  export seed complements.
@@ -33,70 +50,91 @@ class ExportSeedComplementarities:
     with open(config_file, 'r') as yaml_file:
         config = Config(yaml.safe_load(yaml_file), config_file)
 
-    seed_complements = ExportSeedComplementarities(config)
+    seed_complementarities = ExportSeedComplementarities(config)
     """
 
     def __init__(self, config):
 
         logger.info("Initiating Export Seed Complementarities class with params.")
-
-        self.dir_path = config.genres
-        self.outdir = config.seeds
-        self.scores_outfile = os.path.join(self.outdir, "phylomint_scores.tsv")
-        self.save_dics = True
+        self.api     = config.onthefly
+        self.outdir  = config.seeds
         self.threads = config.threads
 
-        self.skip_sets = config.skip_sets
-        self.prev_conf = config.prev_conf
+        self.skip_sets     = config.skip_sets
+        self.prev_conf     = config.prev_conf
         self.prev_nonseeds = config.prev_nonseeds
 
-        self.perce_save = 10
-        self.seed_complements = config.seed_complements
-        self.module_seeds = config.module_seeds
-        self.module_nonseeds = config.module_nonseeds
-
-        self.get_scores = not os.path.exists(self.scores_outfile)
-        self.get_complements = not os.path.exists(self.seed_complements)
-        self.only_module_related = True
-
-        self.namespace = "modelseed"
-        if config.genre_reconstruction_with == "carveme":
-            logger.info("Load bigg2seed map...")
-            self.namespace = "BiGG"
-            self.bigg2seed = bigg_to_seed_mapping_df(config.metanetx_compounds)
-
-        # Prefixes - suffixes
-        self.ex_suffix = "e" if self.namespace == "BiGG" else "e0"
-        self.int_suffix = "c" if self.namespace == "BiGG" else "c0"
-        self.compound_prefix = "M"
-
-        # self.seed_ko_mo = config.seed_ko_mo
         self.modelseed_compounds_of_interest = get_kegg_module_related(
             config.seed_ko_mo
         )
 
+        if self.api:
+            # In case of API, list of species of interest
+            self.patric_ids      = config.patric_ids
+            self.get_complements = True
+            self.get_scores      = config.get_scores
+            self.get_complements = config.get_complements
+
+        else:
+
+            self.dir_path       = config.genres
+            self.save_dics      = True
+            self.get_scores     = not os.path.exists(self.scores_outfile)
+
+            self.seed_complements    = config.seed_complements  # seed_complements.pckl
+            self.get_complements     = not os.path.exists(self.seed_complements)
+
+            # Prefixes - suffixes
+            self.compound_prefix = "M"
+            self.ex_suffix       = "e" if self.namespace == "BiGG" else "e0"
+            self.int_suffix      = "c" if self.namespace == "BiGG" else "c0"
+
+            self.namespace = "modelseed"
+            if config.genre_reconstruction_with == "carveme":
+                logger.info("Load bigg2seed map...")
+                self.namespace = "BiGG"
+                self.bigg2seed = bigg_to_seed_mapping_df(config.metanetx_compounds)
+
+            self.module_seeds     = config.module_seeds      # kegg_module_related_seeds.pckl
+            self.module_nonseeds  = config.module_nonseeds   # kegg_module_related_nonseeds.pckl
+
+            self.get_scores      = not os.path.exists(self.scores_outfile)
+            self.get_complements = not os.path.exists(self.seed_complements)
+
+        # NOTE (Haris Zafeiropoulos, 2025-04-29): Not from the user
+
+        self.only_module_related = True
+        self.perce_save = 10
+        self.scores_outfile = os.path.join(self.outdir, "phylomint_scores.tsv")
+
+        # NOTE (Haris Zafeiropoulos, 2025-04-29): Already provided
         if self.skip_sets:
 
-            logger.info(
-                "Load previously computed confidence scores and non-seed sets.."
-            )
+            if config.onthefly:
+                logger.info("Load conf and non seed sets for running on the fly.")
+                self.ConfidenceDic = load_confidence(self.prev_conf)
+                self.nonSeedSetDic = load_nonseeds(self.prev_nonseeds)
 
-            try:
-                with open(self.prev_conf, "r") as f:
-                    ConfidenceDic = json.load(f)
-            except FileExistsError as e:
-                raise e
-            try:
-                with open(self.prev_nonseeds, "r") as f:
-                    nonSeedSetDic = json.load(f)
-            except FileExistsError as e:
-                raise e
+            else:
 
-            self.ConfidenceDic, self.nonSeedSetDic = {}, {}
-            for k, v in ConfidenceDic.items():
-                self.ConfidenceDic[k] = self._strip_pre_suff_from_dict(v)
-            for k, v in nonSeedSetDic.items():
-                self.nonSeedSetDic[k] = self._strip_pre_suff_from_list(v)
+                logger.info("Load previously computed confidence scores and non-seed sets..")
+
+                try:
+                    with open(self.prev_conf, "r") as f:
+                        ConfidenceDic = json.load(f)
+                except FileExistsError as e:
+                    raise e
+                try:
+                    with open(self.prev_nonseeds, "r") as f:
+                        nonSeedSetDic = json.load(f)
+                except FileExistsError as e:
+                    raise e
+
+                self.ConfidenceDic, self.nonSeedSetDic = {}, {}
+                for k, v in ConfidenceDic.items():
+                    self.ConfidenceDic[k] = self._strip_pre_suff_from_dict(v)
+                for k, v in nonSeedSetDic.items():
+                    self.nonSeedSetDic[k] = self._strip_pre_suff_from_list(v)
 
     def get_sets(self):
         """
@@ -130,7 +168,7 @@ class ExportSeedComplementarities:
         for result in results:
             try:
                 sbml_base, SeedSet, nonSeedSet, SeedSetConfidence = result
-            except:
+            except Exception:
                 pass
 
             tmp = {key: None for key in SeedSet}
@@ -169,104 +207,103 @@ class ExportSeedComplementarities:
         Based on the seed and non-seed sets calculated, get all pairwise competition and cooperation scores and the seed complementarities
         between the modles under study.
         """
-
         logger.info("Exporting seed scores and complementarities.")
 
-        total_species = self.ConfidenceDic.keys()
-        self.perce_save = min(
-            len(total_species), self.perce_save
-        )  # Ensure perce_save does not exceed total species count
+        if self.api:
+            self.patric_ids_of_interest = self.patric_ids
+        else:
+            self.patric_ids_of_interest = self.ConfidenceDic.keys()
 
-        # For multiprocessing
-        lock = multiprocessing.Lock()
-        queue = multiprocessing.Queue()
-        manager = multiprocessing.Manager()
-        shared_compls_dict = manager.dict()  # Shared dictionary for DataFrame
-        processes = []
+        seed_scores      = []
+        seed_complements = {}
 
-        # Start a separate process for tracking progress
-        progress_process = multiprocessing.Process(
-            target=progress_tracker, args=(queue, len(total_species))
-        )
-        progress_process.start()
+        for species in self.patric_ids_of_interest:
+            if self.api:
 
-        # Batch of processes..
-        for i, species in enumerate(total_species):
-            if i % self.threads == 0:
-                for process in processes:
-                    process.join()  # Wait for the batch to finish
-                processes = []  # Clear completed processes
+                logger.info("in the api loop, species:")
+                logger.info(species)
 
-            # ..each running ther worker function
-            process = multiprocessing.Process(
-                target=self.worker_function,
-                args=(lock, species, queue, shared_compls_dict),
-            )
-            processes.append(process)
-            process.start()
+                scores, compls = self.species_scores_compls(species)
 
-            # Periodically save progress in case of big data -- e.g. updating microbetagDB
-            if (
-                len(total_species) > 500
-                and i % (len(total_species) // self.perce_save) == 0
-                and i != 0
-            ):
+                seed_scores.append(scores)
 
-                logger.info(
-                    f"Progress {i}/{len(total_species)} - Shared dict state: {len(shared_compls_dict)}",
-                    file=sys.stderr,
-                )
-                for process in processes:
-                    process.join()
+            else:
+                # Score are written in a file
+                compls = self.species_scores_compls(species)
 
-                # Save temporary progress
-                tmp_dict_serializable = {
-                    k: dict(v) for k, v in shared_compls_dict.items()
-                }
-                with open(
-                    f"tmp_cmpls_{i // (len(total_species) // self.perce_save)}.json",
-                    "w",
-                ) as j:
-                    json.dump(tmp_dict_serializable, j)
-                shared_compls_dict = manager.dict()  # Reset shared dict after saving
+            seed_complements[species] = compls
 
-        # Wait for any remaining processes to finish
-        for process in processes:
-            process.join()
-
-        # Signal the progress tracker to stop
-        queue.put(None)
-        progress_process.join()
+        seed_scores = [s for s in seed_scores if s is not None]
 
         # Finalize shared dictionary and convert to DataFrame
-        final_compls_dict = {k: dict(v) for k, v in shared_compls_dict.items()}
+        final_compls_dict = {
+            k: dict(v) for k, v in (seed_complements or {}).items() if v is not None
+        }
+
         df = pd.DataFrame.from_dict(final_compls_dict)
 
-        # Replace NaN with empty lists for species' complements with itself
-        df = df.applymap(lambda x: [] if isinstance(x, float) and pd.isna(x) else x)
+        # Identify only the float columns
+        float_cols = df.select_dtypes(include="float").columns
+
+        # Replace NaNs with [] only in those columns
+        df[float_cols] = df[float_cols].where(df[float_cols].notna(), [[]])
 
         # Save the final DataFrame
-        with open(self.seed_complements, "wb") as f:
-            pickle.dump(df, f)
+        if self.api:
 
-    def scores_and_overlaps_for_a_species(self, species, lock, shared_dict):
+            logger.info(">>>>>>>>>>>>>>")
+            logger.info(seed_scores)
+            logger.info(final_compls_dict)
+            logger.info("<<<<<<<<<<<<<<<")
+
+            # if self.get_scores:
+            seed_scores = [list(entry)[0].strip().split("\t") for entry in seed_scores]
+            seed_scores_df = pd.DataFrame(
+                seed_scores,
+                columns=[
+                    "PATRIC_A",
+                    "PATRIC_B",
+                    "CompetitionScore",
+                    "CooperationScore",
+                ],
+            )
+
+            return seed_scores_df, final_compls_dict
+
+        else:
+            with open(self.seed_complements, "wb") as f:
+                pickle.dump(df, f)
+
+    def species_scores_compls(self, species):
         """
         [NEW] Get scores and complements for a specific model (species)
+
+        Note:
+            Since, we get all pairwise combinations, we do not care of using the as_donor case for a species,
+            since it's gonna be calculated when the other species is the beneficiary
         """
-        # Get species pairs and seedset confidence
-        as_beneficiary, _ = generate_fixed_pairwise_comparisons(
-            species, list(self.ConfidenceDic.keys())
+
+        # Init compls and scores
+        scores, compls = set(), {}
+
+        # Get pairwise
+        as_beneficiary, _ = _generate_fixed_pairwise_comparisons(
+            species, list(self.patric_ids_of_interest)
         )
-        species_seedset_confidence = self.ConfidenceDic[species]
 
-        findings, compls = set(), {}
-        species = species.replace(".PATRIC", "")  # Clean species name
+        # Get beneficiary's seed set
+        species_seedset_confidence = self.ConfidenceDic.get(species)
+        if species_seedset_confidence is None:
+            return None, None
 
+        # Get seed set of the other species
         for partner in [pair[1] for pair in as_beneficiary if pair[1] != species]:
-            partner_seedset_confidence, nonSeedB = (
-                self.ConfidenceDic[partner],
-                self.nonSeedSetDic[partner],
-            )
+            if (conf := self.ConfidenceDic.get(partner)) is not None and (
+                non_seed := self.nonSeedSetDic.get(partner)
+            ) is not None:
+                partner_seedset_confidence, nonSeedB = conf, non_seed
+            else:
+                continue
 
             SeedA, SeedB, nonSeedB = (
                 set(species_seedset_confidence.keys()),
@@ -274,35 +311,48 @@ class ExportSeedComplementarities:
                 set(nonSeedB),
             )
 
-            if self.get_scores:
+            # NOTE (Haris Zafeiropoulos, 2025-04-29):
+            # In all cases, in the API and the onthefly version, both scores and complements are computed
+
+            if self.get_scores or self.api:
+
                 MetabolicCooperationIdxAB, MetabolicCompetitionIdxAB = calculate_scores(
                     SeedA, species_seedset_confidence, SeedB, nonSeedB
                 )
-                findings.add(
-                    f"{species}\t{partner.replace('.PATRIC', '')}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
+
+                scores.add(
+                    f"{species}\t{partner}\t{MetabolicCompetitionIdxAB}\t{MetabolicCooperationIdxAB}\n"
                 )
 
-            if self.get_complements:
+            if self.get_complements or self.api:
+
                 B_complememts_to_A = extract_complements(SeedA, nonSeedB)
+
                 if self.only_module_related:
                     B_complememts_to_A = kegg_module_related_intersect(
                         B_complememts_to_A, self.modelseed_compounds_of_interest
                     )
                 compls[partner] = B_complememts_to_A
 
-        # Update shared dictionary with complements if needed
-        if self.get_complements:
-            with lock:
-                shared_dict[species] = compls
+        # logger.info("************************")
+        # logger.info("scores")
+        # logger.info(scores)
+        # logger.info("compls")
+        # logger.info(compls)
+        # logger.info("************************")
 
-        # Write findings to file
-        if self.get_scores:
+        if self.api:
+            return scores, compls
+
+        else:
             with open(self.scores_outfile, "a") as f:
-                f.writelines(findings)
+                f.writelines(scores)
+
+            return compls
 
     def worker_function(self, lock, species, queue, shared_dict):
         """Wrapper function to process a species and signal completion."""
-        self.scores_and_overlaps_for_a_species(species, lock, shared_dict)
+        self.species_scores_compls(species, lock, shared_dict)
         with lock:
             queue.put(1)  # Signal that one task is completed
 
@@ -318,9 +368,9 @@ class ExportSeedComplementarities:
         # calculate SeedSets
         try:
             DG_sbml = BuildGraphNetX.buildDG(sbml_path)
-        except:
+        except Exception as e:
             logger.error("Failed to run build directional graph for:", sbml_path)
-            return
+            return e
 
         # Get sets !
         # SeedSet: a dict_keys  |  nonSeedSet: a list already  |  SeedSetConfidence: a dict
@@ -570,3 +620,21 @@ def build_url_with_seed_complements(seed_complements, nonseeds, kmap, shortener=
         logger.info("Shortening the URL.")
         url = shortener.tinyurl.short(url)
     return url
+
+
+# On the fly related
+import gzip
+
+
+def load_confidence(confidence):
+    # confidence: all_conf.json.gz
+    with gzip.open(confidence, "rt", encoding="utf-8") as f:
+        seeds = json.load(f)
+    return seeds
+
+
+def load_nonseeds(nonseeds):
+    # nonseeds: all_nonseeds.json.gz
+    with gzip.open(nonseeds, "rt", encoding="utf-8") as f:
+        nonseeds = json.load(f)
+    return nonseeds

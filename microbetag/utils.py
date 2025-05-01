@@ -4,8 +4,11 @@
 
 # Licensed under GNU LGPL.3, see LICENCE file
 
-import os, re, sys
-import json, csv
+import os
+import re
+import sys
+import json
+import csv
 import time
 import copy
 import glob
@@ -13,6 +16,7 @@ import shutil
 import random
 import logging
 import colorlog
+import numpy as np
 import pandas as pd
 from typing import List
 
@@ -195,7 +199,7 @@ def split_list(input_list: List, chunk_size: int):
     Split a list to sublists of a size.
     """
     return [
-        input_list[i : i + chunk_size] for i in range(0, len(input_list), chunk_size)
+        input_list[i: i + chunk_size] for i in range(0, len(input_list), chunk_size)
     ]
 
 
@@ -379,14 +383,17 @@ def ensure_flashweave_format(conf):
     Build an OTU table that will be in a FlashWeave-based format.
     """
 
-    flashweave_table = pd.read_csv(conf.abundance_table, sep=conf.delimiter).iloc[
-        :, :-1
-    ]
+    flashweave_table = pd.read_csv(
+        conf.abundance_table, sep=conf.delimiter
+    ).iloc[:, :-1]
+
     float_col = flashweave_table.select_dtypes(include=["float64"])
 
     try:
+
         for col in float_col.columns.values:
             flashweave_table[col] = flashweave_table[col].astype("int64")
+
         flashweave_table.iloc[:, 0] = flashweave_table.iloc[:, 0].astype(str)
         flashweave_table.to_csv(conf.flashweave_abd_table, sep="\t", index=False)
         return 1
@@ -489,8 +496,9 @@ def extend_complements(
             if compls:
                 complements_dict_ext[beneficiary_bin][potential_donor] = {}
                 for compl in compls:
-                    module_id = compl[0][3:]  # Extract module ID
-                    kos_to_get = compl[1]  # KOs required to complete the pathway
+
+                    module_id   = compl[0][3:]  # Extract module ID
+                    kos_to_get  = compl[1]  # KOs required to complete the pathway
                     complet_alt = compl[2]  # Alternative complements
 
                     # Skip if the complement is too complex based on settings
@@ -508,9 +516,9 @@ def extend_complements(
                     ]
 
                     # Fetch module description details
-                    triplet = descrps[descrps["moduleId"] == module_id].values.tolist()[
-                        0
-                    ]
+                    triplet = descrps[
+                        descrps["moduleId"] == module_id
+                    ].values.tolist()[0]
 
                     # Add extended complement details
                     complements_dict_ext[beneficiary_bin][potential_donor][
@@ -551,13 +559,16 @@ def extend_faprotax(conf):
 
 def load_phenotypic_traits(conf):
     """PhenDB-like traits"""
+
     logger.info("Loading phenotypic traits")
+
     bin_phen_traits = {}
-    phentraits = set()
+    phentraits      = set()
 
     all_phen_df = os.path.join(
         conf.predictions_path, "phen_traits.tsv"
     )  # TODO: consider giving this also as an argument in the config -- MAKE SURE THEY GIVE SEQUENCE ID AND NOT GTDB ID !!
+
     if os.path.exists(all_phen_df):
         df = pd.read_csv(all_phen_df, sep="\t")
         df = df.drop(["NCBI_ID", "gtdb_id"], axis=1)
@@ -573,18 +584,21 @@ def load_phenotypic_traits(conf):
                     "confidence": entry["".join([trait, "Score"])],
                 }
     else:
+
         prediction_files = [
             os.path.join(conf.predictions_path, file)
             for file in os.listdir(conf.predictions_path)
         ]
+
         for file in prediction_files:
+
             if os.path.getsize(file) == 0:
                 continue
 
-            trait = pd.read_csv(file, sep="\t", skiprows=1)
-            trait_name = os.path.basename(file).split(".prediction.tsv")[0]
+            trait          = pd.read_csv(file, sep="\t", skiprows=1)
+            trait_name     = os.path.basename(file).split(".prediction.tsv")[0]
             trait_filtered = trait[trait["Trait present"].notna()]
-            trait_dict = trait_filtered.to_dict(orient="records")
+            trait_dict     = trait_filtered.to_dict(orient="records")
 
             for case in trait_dict:
                 bin_id, _ = os.path.splitext(case["Identifier"])
@@ -611,6 +625,16 @@ def flatten_list(lista, flat_list=[]):
             flat_list.append(i)
     return set(flat_list)
 
+
+def is_any_nan(x):
+    try:
+        return np.isnan(x)
+    except Exception:
+        return str(x).lower() == 'nan'
+
+def remove_nan_from_list(lst):
+
+    return [x for x in lst if not is_any_nan(x)]
 
 def detect_separator(file_path):
     """
@@ -652,7 +676,7 @@ def detect_separator(file_path):
             dialect = sniffer.sniff(sample)
             return dialect.delimiter
 
-    except:
+    except Exception:
         raise TypeError(f"Cannot get delimiter for file {file_path}")
 
 

@@ -1,4 +1,5 @@
 from .config import Config
+
 from .helpers import (
     MappingPaths,
     PathwayComplementarity,
@@ -9,20 +10,22 @@ from .helpers import (
     BinsHandler,
     manta_input_net,
 )  # GenresHandler
+
 from .utils import (
     ko_list_parser,
     merge_ko,
     extend_complements,
     load_phenotypic_traits,
     extend_faprotax,
-    extend_complements,
 )
+
 from .pathway_complementarity import (
     export_pathway_complementarities,
     all_complements,
     all_alternatives,
     build_kegg_url,
 )
+
 from .seed_complementarity import (
     ExportSeedComplementarities,
     load_seed_complement_files,

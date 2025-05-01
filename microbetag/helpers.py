@@ -2,7 +2,8 @@
 Handlers classes allowing the different steps
 """
 
-import os, sys
+import os
+import sys
 import json
 import pickle
 import pandas as pd
@@ -10,8 +11,16 @@ import pandas as pd
 from .utils import resolve_file_path, convert_to_json_serializable, mtg_logger
 from .networks import build_base_graph
 
-logger = mtg_logger(__name__)
+class Emojis:
+    def __init__(self) -> None:
+        self.WARNING_EMOJI     = "\u2757"
+        self.TADA_EMOJI        = '"\U0001f389"'
+        self.RED_CROSS_EMOJI   = "\u274c"
+        self.GREEN_CHECK_EMOJI = "\u2705"
+        self.ANNOUNCEMET       = "\u1f4e3"
 
+logger = mtg_logger(__name__)
+emojis = Emojis()
 
 class PathwayComplementarity:
     """
@@ -19,15 +28,15 @@ class PathwayComplementarity:
     """
 
     def __init__(self, config):
-        self.conf = config
-        self.base_dir = config.base_dir
+        self.conf       = config
+        self.base_dir   = config.base_dir
         self.output_dir = config.output_dir
 
         # KEGG related paths to be filled based on user's settings
-        self.ko_merged = None
-        self.kegg_db_dir = None
+        self.ko_merged        = None
+        self.kegg_db_dir      = None
         self.kegg_annotations = None
-        self.kegg_pieces_dir = None
+        self.kegg_pieces_dir  = None
         self.initialize(config)
 
     def setup_kegg_annotations(self):
@@ -87,8 +96,8 @@ class PathwayComplementarity:
             self.output_dir, "pathway_complementarity"
         )
         os.makedirs(self.pathway_complements_dir, exist_ok=True)
-        self.alts_file = os.path.join(self.pathway_complements_dir, "alts.json")
-        self.compl_file = os.path.join(self.pathway_complements_dir, "pathCompls.json")
+        self.alts_file                     = os.path.join(self.pathway_complements_dir, "alts.json")
+        self.compl_file                    = os.path.join(self.pathway_complements_dir, "pathCompls.json")
         self.pathway_complement_percentage = (
             config.yaml["pathway_complement_percentage"]["value"]
             if config.yaml["pathway_complement_percentage"]["value"] is not None
@@ -102,13 +111,12 @@ class MappingPaths:
     """
 
     def __init__(self):
-        mtg = os.path.dirname(__file__)
-        kegg_mappings = os.path.join(mtg, "mtg_maps_models/kegg_mappings/")
-        self.kegg_mappings = kegg_mappings
+        mtg                     = os.path.dirname(__file__)
+        kegg_mappings           = os.path.join(mtg, "mtg_maps_models/kegg_mappings/")
+        self.kegg_mappings      = kegg_mappings
         self.metanetx_compounds = os.path.join(
             mtg, "mtg_maps_models/MetaNetX/chem_xref.tar.gz"
         )
-
         self.ko_terms_per_module_definition = os.path.join(
             kegg_mappings, "kegg_terms_per_module.tsv"
         )
@@ -116,8 +124,8 @@ class MappingPaths:
             kegg_mappings, "module_definition_map.json"
         )
         self.kegg_modules_to_maps = os.path.join(kegg_mappings, "module_map_pairs.tsv")
-        self.seed_ko_mo = os.path.join(self.kegg_mappings, "seedId_keggId_module.tsv")
-        self.module_descriptions = os.path.join(kegg_mappings, "module_descriptions")
+        self.seed_ko_mo           = os.path.join(self.kegg_mappings, "seedId_keggId_module.tsv")
+        self.module_descriptions  = os.path.join(kegg_mappings, "module_descriptions")
 
 
 class Faprotax:
@@ -131,7 +139,7 @@ class Faprotax:
         self.faprotax_script = os.path.join(
             config.cwd, "mtg_maps_models/FAPROTAX_1.2.10/collapse_table.py"
         )
-        self.faprotax_output_dir = os.path.join(config.output_dir, "faprotax")
+        self.faprotax_output_dir  = os.path.join(config.output_dir, "faprotax")
         self.faprotax_funct_table = os.path.join(
             self.faprotax_output_dir, "functional_otu_table.tsv"
         )
@@ -152,7 +160,7 @@ class NetworkHandler:
         if config.network:
             self.process_network(config)
         else:
-            self.network = os.path.join(config.output_dir, "network_output.edgelist")
+            self.network    = os.path.join(config.output_dir, "network_output.edgelist")
             self.flashweave = True
 
     def process_network(self, config):
@@ -181,7 +189,6 @@ class NetworkHandler:
 
 
 class AbdTableHandler:
-
     def __init__(self, config):
         """
         Handles processing and validation of the abundance table.
@@ -216,11 +223,11 @@ class AbdTableHandler:
 
         # First column is assumed to contain sequence IDs (bins)
         self.sequence_id_column_name = df.columns[0]
-        self.seq_ids = df.iloc[:, 0].tolist()
+        self.seq_ids                 = df.iloc[:, 0].tolist()
 
         # Validate bin names if provided
         if config.bins_ids is not None:
-            missing_bins = set(config.bins_ids) - set(self.seq_ids)
+            missing_bins    = set(config.bins_ids) - set(self.seq_ids)
             missing_seq_ids = set(self.seq_ids) - set(config.bins_ids)
 
             if missing_seq_ids:
@@ -240,20 +247,20 @@ class AbdTableHandler:
                     f"Bin names do not match with those in the abundance table: {missing_bins_str}"
                 )
 
+        # microbetag data product to enable running FlashWeave; the user will never have to worry for it.
+        abd_flashweave            = "abd_table_for_flashweave.tsv"
+        self.flashweave_abd_table = os.path.join(config.base_dir, abd_flashweave)
+
     def load_metadata_file(self, config):
         """Load metadata file if provided"""
         # Metadata file
-        metadata_file = config.yaml.get("metadata_file", {}).get("file_path")
+        metadata_file      = config.yaml.get("metadata_file", {}).get("file_path")
         self.metadata_file = (
             os.path.join(config.base_dir, metadata_file) if metadata_file else None
         )
         if metadata_file is not None:
-            df = pd.read_csv(self.metadata_file, sep="\t", index_col=0, header=None)
+            df                      = pd.read_csv(self.metadata_file, sep="\t", index_col=0, header=None)
             self.metadata_variables = df.index.to_list()
-
-        # microbetag data product to enable running FlashWeave; the user will never have to worry for it.
-        abd_flashweave = "abd_table_for_flashweave.tsv"
-        self.flashweave_abd_table = os.path.join(config.base_dir, abd_flashweave)
 
 
 class BinsHandler:
@@ -261,7 +268,7 @@ class BinsHandler:
         """
         Handles bin files management.
         """
-        self.bins_ids = None
+        self.bins_ids      = None
         self.bin_filenames = None
         self._validate_and_load_bins(config)
 
@@ -279,14 +286,13 @@ class BinsHandler:
         # Try loading filenames from the given path
         try:
             self.bin_filenames = os.listdir(config.bins_path)
-            self.bins_ids = [os.path.splitext(fname)[0] for fname in self.bin_filenames]
+            self.bins_ids      = [os.path.splitext(fname)[0] for fname in self.bin_filenames]
 
         except FileNotFoundError:
             raise ValueError("Invalid path provided for the bins FASTA files.")
 
 
 class SeedComplementarityHandler:
-
     def __init__(self, config):
         """
         Handles genre reconstruction method validation based on user-provided models.
@@ -294,7 +300,7 @@ class SeedComplementarityHandler:
         :param config: Configuration object containing user preferences and paths.
         """
 
-        self.base_dir = config.base_dir
+        self.base_dir  = config.base_dir
         self.bins_path = config.bins_path
 
         # Get seed complementarity value, defaulting to True if invalid
@@ -303,16 +309,17 @@ class SeedComplementarityHandler:
             scompl = False
             logger.warning(
                 "Value for 'seed_complementarity' was not provided properly (true|false)."
-                f"microbetag will proceed without seed complementarity. {WARNING_EMOJI}"
+                f"microbetag will proceed without seed complementarity. {emojis.WARNING_EMOJI}"
             )
         self.seed_complementarity = scompl
 
-        self._validate_input_type(config)
-
-        self._set_reconstruction_files(config)
+        if not config.onthefly:
+            self._validate_input_type(config)
+            self._set_reconstruction_files(config)
+            self.reconstrucion_paths(config)
+            self._validate_model_namespace(config)
 
         self.seeds_paths(config)
-        self._validate_model_namespace(config)
 
     def _validate_input_type(self, config):
         """Validates and sets the input type for seed complementarity reconstructions."""
@@ -329,6 +336,7 @@ class SeedComplementarityHandler:
         allowed_values = config.yaml.get(
             "input_type_for_seed_complementarities", {}
         ).get("value_from", [])
+
         if input_value not in allowed_values:
             logger.error(
                 f"Error: Input value '{input_value}' is not among the allowed values: {allowed_values}"
@@ -336,7 +344,7 @@ class SeedComplementarityHandler:
             sys.exit(1)
 
         self.input_for_recon_type = input_value
-        self.users_models = input_value == "models"
+        self.users_models         = input_value == "models"
 
     def _set_reconstruction_files(self, config):
         """Determines the correct path for sequence files needed for reconstructions."""
@@ -368,7 +376,7 @@ class SeedComplementarityHandler:
                 )
 
             random_model = os.path.join(self.for_reconstructions, model_files[0])
-            model = cobra.io.read_sbml_model(random_model)
+            model        = cobra.io.read_sbml_model(random_model)
 
         except FileNotFoundError:
             raise ValueError(f"Invalid path: {self.for_reconstructions}")
@@ -403,40 +411,45 @@ class SeedComplementarityHandler:
                 )
                 self.genre_reconstruction_with = "carveme"
 
-    def seeds_paths(self, config):
+    def reconstrucion_paths(self, config):
         """Set pathways for seeds related files and folders"""
 
-        self.gene_predictor = config.yaml.get("gene_predictor", {}).get("value")
-        self.genre_reconstruction_with = config.yaml.get(
-            "genre_reconstruction_with", {}
-        ).get("value")
+        self.gene_predictor            = config.yaml.get("gene_predictor", {}).get("value")
+        self.genre_reconstruction_with = config.yaml.get("genre_reconstruction_with", {}).get("value")
 
         if self.users_models is False:
+
             # Directory for tmp reconstruction files
             self.reconstructions = os.path.join(config.output_dir, "reconstructions")
+
             # Directory for final reconstructions
             self.genres = os.path.join(self.reconstructions, "GENREs")
             os.makedirs(self.reconstructions, exist_ok=True)
             os.makedirs(self.genres, exist_ok=True)
+
         else:
             self.reconstructions = self.for_reconstructions
             self.genres = self.for_reconstructions
 
+    def seeds_paths(self, config):
+
         # Directory for seeds complementarity
         seedset_dir = config.yaml.get("prev_calc_seed_sets", {}).get("dir_path")
-        self.seeds = seedset_dir or os.path.join(
+        self.seeds  = seedset_dir or os.path.join(
             config.output_dir, "seeds_complementarity"
         )
         os.makedirs(self.seeds, exist_ok=True)
 
-        self.prev_conf = config.yaml.get("prev_conf", {}).get("file_path")
+        # NOTE (Haris Zafeiropoulos, 2025-04-29): These 2 are supposed to be the .json files.
+        self.prev_conf     = config.yaml.get("prev_conf", {}).get("file_path")
         self.prev_nonseeds = config.yaml.get("prev_nonseeds", {}).get("file_path")
-        self.skip_sets = self.prev_conf is not None and self.prev_nonseeds is not None
+
+        self.skip_sets     = self.prev_conf is not None and self.prev_nonseeds is not None
 
         self.seed_complements = os.path.join(self.seeds, "seed_complements.pckl")
         self.phylomint_scores = os.path.join(self.seeds, "phylomint_scores.tsv")
 
-        self.module_seeds = os.path.join(self.seeds, "kegg_module_related_seeds.pckl")
+        self.module_seeds    = os.path.join(self.seeds, "kegg_module_related_seeds.pckl")
         self.module_nonseeds = os.path.join(
             self.seeds, "kegg_module_related_nonseeds.pckl"
         )
@@ -445,23 +458,17 @@ class SeedComplementarityHandler:
 def manta_input_net(config):
     """Build intermediate network file as input for manta"""
 
-    manta_input = build_base_graph(config)
+    manta_input        = build_base_graph(config)
     manta_input_serial = convert_to_json_serializable(manta_input)
     with open(config.base_network_file, "w") as f:
         json.dump(manta_input_serial, f, indent=4)
     return True
 
 
-class Emojis:
-    def __init__(self) -> None:
-        self.WARNING_EMOJI = "\u2757"
-        self.TADA_EMOJI = '"\U0001f389"'
-        self.RED_CROSS_EMOJI = "\u274c"
-        self.GREEN_CHECK_EMOJI = "\u2705"
-        self.ANNOUNCEMET = "\u1f4e3"
-
-
-# [NOTE] OUT OF SCOPE BUT CURRENTLY USEFUL
+# -------------------------------------------------------------------
+# NOTE (Haris Zafeiropoulos, 2025-04-28):
+# OUT OF SCOPE BUT CURRENTLY USEFUL
+# -------------------------------------------------------------------
 def local_seed_url():
     """
     Builds KEGG urls for seed complements.
