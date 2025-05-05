@@ -8,6 +8,16 @@
 # Date: Dec, 2024
 
 
+onthefly:
+  value: false
+  description: >
+    The onthefly version of microbetag makes use of the microbetagDB for the phenotypic traits and the pathway 
+    complementarity steps, as well as the pre-computed seed and non-seed sets of the ModelSEEDpy-built GEMs for 
+    the representative GTDB genomes.
+  required: true
+  type: bool
+
+
 # ------
 # INPUT/OUTPUT
 # ------

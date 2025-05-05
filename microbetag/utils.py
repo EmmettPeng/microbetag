@@ -558,57 +558,70 @@ def extend_faprotax(conf):
 
 
 def load_phenotypic_traits(conf):
-    """PhenDB-like traits"""
+    """
+    Load phenotrex-based trait files and assignm them per genome. 
+
+
+    Returns:                    
+        bin_phen_traits: A dict with genome id as key and a dict as value with each trait as value and their presence/absence
+                        and score as value
+                        bin_phen_traits[bin_id][trait_name] = {
+                                    "presence": case["Trait present"],
+                                    "confidence": case["Confidence"],
+                                }
+        phentraits: A set witt the traits presentt
+    """
 
     logger.info("Loading phenotypic traits")
 
     bin_phen_traits = {}
     phentraits      = set()
 
-    all_phen_df = os.path.join(
-        conf.predictions_path, "phen_traits.tsv"
-    )  # TODO: consider giving this also as an argument in the config -- MAKE SURE THEY GIVE SEQUENCE ID AND NOT GTDB ID !!
+    # all_phen_df = os.path.join(
+    #     conf.predictions_path, "phen_traits.tsv"
+    # )  # TODO: consider giving this also as an argument in the config -- MAKE SURE THEY GIVE SEQUENCE ID AND NOT GTDB ID !!
 
-    if os.path.exists(all_phen_df):
-        df = pd.read_csv(all_phen_df, sep="\t")
-        df = df.drop(["NCBI_ID", "gtdb_id"], axis=1)
-        phentraits = {x for x in df.columns if "Score" not in x}
-        phentraits.remove("sequence_id")
-        list_of_dics = df.to_dict(orient="records")
+    # if os.path.exists(all_phen_df):
+    #     df = pd.read_csv(all_phen_df, sep="\t")
+    #     df = df.drop(["NCBI_ID", "gtdb_id"], axis=1)
+    #     phentraits = {x for x in df.columns if "Score" not in x}
+    #     phentraits.remove("sequence_id")
+    #     list_of_dics = df.to_dict(orient="records")
 
-        for entry in list_of_dics:
-            bin_phen_traits[entry["sequence_id"]] = {}
-            for trait in phentraits:
-                bin_phen_traits[entry["sequence_id"]][trait] = {
-                    "presence": entry[trait],
-                    "confidence": entry["".join([trait, "Score"])],
-                }
-    else:
+    #     for entry in list_of_dics:
+    #         bin_phen_traits[entry["sequence_id"]] = {}
+    #         for trait in phentraits:
+    #             bin_phen_traits[entry["sequence_id"]][trait] = {
+    #                 "presence": entry[trait],
+    #                 "confidence": entry["".join([trait, "Score"])],
+    #             }
+    # else:
 
-        prediction_files = [
-            os.path.join(conf.predictions_path, file)
-            for file in os.listdir(conf.predictions_path)
-        ]
+    prediction_files = [
+        os.path.join(conf.predictions_path, file)
+        for file in os.listdir(conf.predictions_path)
+    ]
 
-        for file in prediction_files:
+    for file in prediction_files:
 
-            if os.path.getsize(file) == 0:
-                continue
+        if os.path.getsize(file) == 0:
+            continue
 
-            trait          = pd.read_csv(file, sep="\t", skiprows=1)
-            trait_name     = os.path.basename(file).split(".prediction.tsv")[0]
-            trait_filtered = trait[trait["Trait present"].notna()]
-            trait_dict     = trait_filtered.to_dict(orient="records")
+        trait          = pd.read_csv(file, sep="\t", skiprows=1)
+        trait_name     = os.path.basename(file).split(".prediction.tsv")[0]
+        trait_filtered = trait[trait["Trait present"].notna()]
+        trait_dict     = trait_filtered.to_dict(orient="records")
 
-            for case in trait_dict:
-                bin_id, _ = os.path.splitext(case["Identifier"])
-                if bin_id not in bin_phen_traits:
-                    bin_phen_traits[bin_id] = {}
-                phentraits.add(trait_name)
-                bin_phen_traits[bin_id][trait_name] = {
-                    "presence": case["Trait present"],
-                    "confidence": case["Confidence"],
-                }
+        for case in trait_dict:
+            bin_id, _ = os.path.splitext(case["Identifier"])
+            if bin_id not in bin_phen_traits:
+                bin_phen_traits[bin_id] = {}
+            phentraits.add(trait_name)
+            bin_phen_traits[bin_id][trait_name] = {
+                "presence": case["Trait present"],
+                "confidence": case["Confidence"],
+            }
+
     return bin_phen_traits, phentraits
 
 
@@ -663,11 +676,7 @@ def detect_separator(file_path):
             )
             percent_size = max(percent_size, int(1e5))
 
-            # Log sizes
-            logger.info(f"file_size of {file_path}: {file_size}")
-            logger.info(f"percent_size:  {percent_size}")
-
-            # # Move to the start of the file
+            # Move to the start of the file
             file.seek(0)
             sample = file.read(percent_size)
 

@@ -165,8 +165,8 @@ class NetworkHandler:
 
     def process_network(self, config):
         """Process network edgelist and check bin consistency."""
+
         f = pd.read_csv(config.network, sep="\t")
-        logger.info(f.head())
 
         bins_in_net = set(f.iloc[:, 0]).union(f.iloc[:, 1])  # Get unique bin names
 

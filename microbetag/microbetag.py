@@ -279,7 +279,7 @@ def run_microbetag(config):
     # ----------------
     if config.precalc_only is False:
         logger.info("[STEP] ANNOTATE NETWORK ")
-        mtg_annotate_network(config)
+        mtg_net = mtg_annotate_network(config)
 
     # ----------------
     # Keep arguments
@@ -288,6 +288,8 @@ def run_microbetag(config):
     logger.info("A parameters.log file with the parameters used in this run was built.")
 
     logger.info("microbetag completed.")
+
+    return mtg_net
 
 
 def print_help():

@@ -14,6 +14,7 @@ else:
 
 
 logger = mtg_logger(__file__)
+RANKS = ["domain", "phylum", "class", "order", "family", "genus", "species"]
 
 
 def map_seq_to_ncbi_tax_level_and_id(
@@ -29,10 +30,10 @@ def map_seq_to_ncbi_tax_level_and_id(
     splt_tax, gtdb_on = add_species_ncbi_ids(splt_tax, tax_scheme, mappings)
 
     splt_tax = add_higher_level_ncbi_id(
-        splt_tax, "Genus", mappings.GENERA_NCBI_IDS, underscore=True
+        splt_tax, "genus", mappings.GENERA_NCBI_IDS, underscore=True
     )
     splt_tax = add_higher_level_ncbi_id(
-        splt_tax, "Family", mappings.FAMILIES_NCBI_IDS, underscore=True
+        splt_tax, "family", mappings.FAMILIES_NCBI_IDS, underscore=True
     )
 
     get_ncbi_tax_level(splt_tax)
@@ -70,15 +71,8 @@ def split_and_validate_taxonomy(abd_tab, seqId, tax_col, tax_delim):
     if splt_tax.shape[1] != 7:
         raise ValueError("The taxonomy scheme provided is not a 7-level one.")
     #
-    splt_tax.columns = [
-        "Domain",
-        "Phylum",
-        "Class",
-        "Order",
-        "Family",
-        "Genus",
-        "Species",
-    ]
+    splt_tax.columns = RANKS
+
     splt_tax[seqId] = taxonomies[seqId].values
     splt_tax["microbetag_id"] = taxonomies["microbetag_id"].values
     return splt_tax
@@ -86,30 +80,40 @@ def split_and_validate_taxonomy(abd_tab, seqId, tax_col, tax_delim):
 
 def normalize_species_column(splt_tax):
     #
-    species = splt_tax["Species"].apply(process_underscore_taxonomy)
-    genus = splt_tax["Genus"].apply(process_underscore_taxonomy)
+    species = splt_tax["species"].apply(process_underscore_taxonomy)
+    genus = splt_tax["genus"].apply(process_underscore_taxonomy)
     #
-    if splt_tax["Species"].str.contains("s__").all():
-        if splt_tax["Species"].str.contains(r"__[\s_]").all():
+    if splt_tax["species"].str.contains("s__").all():
+        if splt_tax["species"].str.contains(r"__[\s_]").all():
             return splt_tax.assign(extendedSpecies=species)
         if any(g in s for g, s in zip(genus, species)):
             return splt_tax.assign(extendedSpecies=species)
         return splt_tax.assign(extendedSpecies=genus + " " + species)
-    return splt_tax.assign(extendedSpecies=splt_tax["Species"])
+    return splt_tax.assign(extendedSpecies=splt_tax["species"])
 
 
 def add_species_ncbi_ids(splt_tax, tax_scheme, mappings):
-    if tax_scheme == "GTDB":
+    """
+    Map taxonomy provided to microbetag taxonomy scheme to map NCBI Taxonomy id and level.
+
+    """
+
+    if tax_scheme     == "GTDB":
         taxon_map_file = "gtdbSpecies2ncbiId2accession.tsv"
-    elif tax_scheme == "Silva":
+
+    elif tax_scheme   == "Silva":
         taxon_map_file = "gtdb_silvaSpecies2ncbi2accession.tsv"
-    elif tax_scheme == "microbetag_prep":
+
+    elif tax_scheme   == "microbetag_prep":
         taxon_map_file = "gc_accession_16s_gtdb_ncbid.tsv"
+
     else:
         taxon_map_file = "species2ncbiId.tsv"
+
     #
-    taxon_map_path = os.path.join(mappings.TAXONOMY, taxon_map_file)
+    taxon_map_path  = os.path.join(mappings.TAXONOMY, taxon_map_file)
     taxon_to_ncbiId = pd.read_csv(taxon_map_path, sep="\t")
+
     #
     if tax_scheme in {"GTDB", "Silva", "microbetag_prep"}:
         taxon_to_ncbiId.columns = ["refSpecies", "species_ncbi_id", "gtdb_gen_repr"]
@@ -124,8 +128,10 @@ def add_species_ncbi_ids(splt_tax, tax_scheme, mappings):
             lambda x: [x] if pd.notna(x) else np.nan
         )
         return splt_tax, True
+
     else:
-        # fallback logic for fuzzy mapping if needed
+
+        # Fallback logic for fuzzy mapping if needed
         taxon_to_ncbiId.columns = ["refSpecies", "species_ncbi_id"]
         splt_tax = pd.merge(
             splt_tax,

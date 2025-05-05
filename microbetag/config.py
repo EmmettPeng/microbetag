@@ -288,7 +288,7 @@ class Config:
         # ==========
         # Init torch -- machine learning library
         # ==========
-        if not self.onthefly or not self.phen_traits:
+        if not self.onthefly and self.phen_traits:
 
             import torch
             from deepnog.utils import get_weights_path
