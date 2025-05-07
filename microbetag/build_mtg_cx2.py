@@ -4,13 +4,15 @@
 
 # Licensed under GNU LGPL.3, see LICENCE file
 
-
 import os
 import pickle
 
 import datetime
 import pyshorteners
 import pandas as pd
+
+from typing import Dict, Set, Tuple, Any
+from collections import defaultdict
 
 import ndex2.cx2
 from ndex2.nice_cx_network import NiceCXNetwork
@@ -64,8 +66,8 @@ def taxonomy_levels_sa(node):
     except Exception as e:
         pass  # or log the exception for debugging
 
-
-def init_nodes_and_edges(edgelist, seq_id_to_taxonomy, config=None):
+# TODO (Haris Zafeiropoulos, 2025-05-07): check the seq_id_to_taxonomy Dict
+def init_nodes_and_edges(edgelist: pd.DataFrame, seq_id_to_taxonomy: Dict[str, str], config=None):
     """
     Builds nodes and edges.
 
@@ -77,7 +79,7 @@ def init_nodes_and_edges(edgelist, seq_id_to_taxonomy, config=None):
         Tuple[List[Dict], List[str], List[Dict]]: Nodes, node names, and edges.
     """
     # Extract unique node names efficiently -- sequence ids
-    seq_ids_lst = list(set(edgelist["node_A"]).union(edgelist["node_B"]))
+    seq_ids_lst = sorted(set(edgelist["node_A"]).union(edgelist["node_B"]))
 
     # Create nodes
     if not config.onthefly:
@@ -254,17 +256,22 @@ def update_with_manta(config, nodes, node_names):
 # -----------------------------
 # EDGES - PATHWAY COMPLEMENTARITY
 # -----------------------------
+def _set_none_genome(genome, sequence):
+    return genome or sequence
+
 def pathway_complement_edge(
-    edge_id, beneficiary, donor, complement, node_names, update=False, cx_edges=None
+    edge_id: int, beneficiary: str, donor: str, complement, node_names: list[str],
+    beneficiary_genome=None, donor_genome=None, update=False, cx_edges=None
 ):
     """
     Creates an edge representing pathway complementarity between a donor and a beneficiary.
 
     Conceptually, the donor is the source, since a compound would be secreted from it and drive to the beneficiary (target)
 
-    Args:
-        beneficiary (str): The recipient of the complement.
-        donor (str): The source of the complement.
+    Arguments:
+        edge_id:
+        beneficiary (str): The recipient of the complement. It is considered as the target of the edge in microbetag.
+        donor (str): The source of the complement. It is considered as the donor of the edege.
         complement (any): The complement value.
         node_names (List[str]): List of node names to determine node indices.
         interaction_type (str): Type of interaction (e.g., "complementarity").
@@ -273,10 +280,13 @@ def pathway_complement_edge(
     Returns:
         Dict: Edge representation.
     """
+    beneficiary_genome = _set_none_genome(beneficiary_genome, beneficiary)
+    donor_genome       = _set_none_genome(donor_genome, donor)
+
     if update:
         edge = cx_edges[edge_id]
     else:
-        interacting = "".join(["(", COMPLEMENTING, ")"])
+        # interacting = "".join(["(", COMPLEMENTING, ")"])
         edge = {
             "id": edge_id,  # Unique ID
             "s": node_names.index(donor),  # Source (donor)
@@ -287,7 +297,7 @@ def pathway_complement_edge(
             },
         }
 
-    column = f"compl::{beneficiary}:{donor}"
+    column = f"compl::{beneficiary_genome}:{donor_genome}"
     edge["v"].update({column: _hat_complement(complement)})
     return edge
 
@@ -304,7 +314,7 @@ def _get_edge_id(beneficiary, donor, node_names, edges, interaction_type):
     """
     Checks if an edge is already there of a specific source - target -interaction type.
     If yes, it returns the index of the edge in the edges list.
-
+    Remember! Source and target are always the sequence identifiers.
     """
     target, source = node_names.index(beneficiary), node_names.index(donor)
     edge = next(
@@ -327,6 +337,49 @@ def _update_or_append(lst, index, item, update):
         lst.append(item)
 
 
+def _path_compl_maps(config, genome_ids_in_nodes: list):
+    """
+    Builds mapping objects to properly pass pathway complementarities to their corresponding edges.
+
+    Arguments:
+        config:
+        genomes_ids_in_nodes:  A list of GC ids found in complementarities (pathCompls.json)
+    Returns:
+
+    """
+    df      = config.mspecies_map_df
+    gc_list = list(genome_ids_in_nodes.copy())
+
+    # Filter rows where GC is in gtdb_gen_repr_A and get corresponding node_A
+    mask_A = df["gtdb_gen_repr_A"].isin(gc_list)
+    nodes_from_A = df.loc[mask_A, "node_A"]
+
+    # Filter rows where GC is in gtdb_gen_repr_B and get corresponding node_B
+    mask_B = df["gtdb_gen_repr_B"].isin(gc_list)
+    nodes_from_B = df.loc[mask_B, "node_B"]
+
+    # Combine and get unique values if needed
+    nodes_in_compls = pd.concat([nodes_from_A, nodes_from_B]).unique()
+
+    # -----
+
+    # Initialize a defaultdict of sets (or use list if you prefer duplicates)
+    node_to_gtdb = defaultdict(set)
+
+    # Map node_A to gtdb_gen_repr_A
+    for node, gtdb in zip(df["node_A"], df["gtdb_gen_repr_A"]):
+        node_to_gtdb[node].add(gtdb)
+
+    # Map node_B to gtdb_gen_repr_B
+    for node, gtdb in zip(df["node_B"], df["gtdb_gen_repr_B"]):
+        node_to_gtdb[node].add(gtdb)
+
+    # Convert sets to lists (optional)
+    node_to_gtdb = {node: list(gtdbs) for node, gtdbs in node_to_gtdb.items()}
+
+    return nodes_in_compls, node_to_gtdb
+
+
 def pathway_complements(config, edgelist_df, node_names, cx_edges):
 
     complements_dict = extend_complements(
@@ -337,34 +390,52 @@ def pathway_complements(config, edgelist_df, node_names, cx_edges):
         pathway_complement_percentage=config.pathway_complement_percentage,
     )
 
-    nodes_in_compls_dict = set(complements_dict.keys())
+    nodes_in_compls = set()
+    for outer_id, inner_dict in complements_dict.items():
+        nodes_in_compls.add(outer_id)  # The 'add' function adds a single element to the set.
+        # If you pass a list, tuple, or set, it treats the entire object as one element.
+        nodes_in_compls.update(inner_dict.keys())  # Adds multiple elements (from an iterable) to the set.
 
-    for record in edgelist_df.iterrows():
+    if config.onthefly:
 
-        _, link = record
+        # NOTE (Haris Zafeiropoulos, 2025-05-07): In this case the nodes_in_compls does not
+        # have sequence identifiers, as in the stand-alone version, but GC ids. So we need to map them to seq ids.
+        nodes_in_compls, node_to_gtdb = _path_compl_maps(config, nodes_in_compls)
+
+    for _, link in edgelist_df.iterrows():
         node_a, node_b, _ = link
 
-        if node_a in nodes_in_compls_dict and node_b in nodes_in_compls_dict:
+        if node_a not in nodes_in_compls or node_b not in nodes_in_compls:
+            continue
 
-            for beneficiary, donor in [(node_a, node_b), (node_b, node_a)]:
+        for beneficiary, donor in [(node_a, node_b), (node_b, node_a)]:
+            ben_ids = node_to_gtdb[beneficiary] if config.onthefly else [beneficiary]
+            don_ids = node_to_gtdb[donor] if config.onthefly else [donor]
 
-                edge_id, update = _get_edge_id(
-                    beneficiary, donor, node_names, cx_edges, COMPLEMENTARITY_TYPE
-                )
+            for ben_genome in ben_ids:
+                for don_genome in don_ids:
+                    if ben_genome not in complements_dict or don_genome not in complements_dict[ben_genome]:
+                        continue
 
-                complement = complements_dict[beneficiary][donor]
+                    complement = complements_dict[ben_genome][don_genome]
 
-                pe = pathway_complement_edge(
-                    edge_id,
-                    beneficiary,
-                    donor,
-                    complement,
-                    node_names,
-                    update,
-                    cx_edges,
-                )
+                    edge_id, update = _get_edge_id(
+                        beneficiary, donor, node_names, cx_edges, COMPLEMENTARITY_TYPE
+                    )
 
-                _update_or_append(cx_edges, edge_id, pe, update)
+                    pe = pathway_complement_edge(
+                        edge_id=edge_id,
+                        beneficiary=beneficiary,  # target
+                        donor=donor,              # source
+                        complement=complement,
+                        node_names=node_names,
+                        beneficiary_genome=ben_genome if config.onthefly else None,
+                        donor_genome=don_genome if config.onthefly else None,
+                        update=update,
+                        cx_edges=cx_edges,
+                    )
+
+                    _update_or_append(cx_edges, edge_id, pe, update)
 
 
 # -----------------------------
@@ -533,8 +604,16 @@ def seed_complements(config, edgelist_df, node_names, cx_edges):
 # -----------------------------
 # NETWORK
 # -----------------------------
-def build_cx2(nodes, edges):
+# TODO (Haris Zafeiropoulos, 2025-05-07): check Dict
+def build_cx2(nodes: Dict[str, Dict], edges: Dict[str, Dict]):
+    """
+    Builds the microbetag annotated network in a CX2 format (https://cytoscape.org/cx/).
 
+    To this end, the function exploits the ndex2 Python library (https://ndex2.readthedocs.io/) while the MGG
+    Java app, needs to specify that the expected response from microbetag, is in CX2.
+    -- See CreateNetworkTask.java and the cytoscapeAPIURL.
+
+    """
     # Create an empty net cx
     net_cx = ndex2.cx2.CX2Network()
 
@@ -547,10 +626,11 @@ def build_cx2(nodes, edges):
         prefixes = set(k.split("::")[0] for k in d)
         return (len(prefixes), len(d))  # you can reverse both with -len if needed
 
-    sorted_node_attributes = sorted(node_attributes, key=sort_key, reverse=True)
+    # sorted_node_attributes = sorted(node_attributes, key=sort_key, reverse=True)
 
     # Add nodes on the net_cx
-    for node_attributes in sorted_node_attributes:
+    # for node_attributes in sorted_node_attributes:
+    for node_attributes in node_attributes:
 
         # Add node
         net_cx.add_node(attributes=node_attributes)
@@ -636,29 +716,42 @@ def load_otf_seq_map(df):
 
 
 def mtg_annotate_network(config):
+    """
+    Wrapper function for getting the various annotations previously made for a microbetag run
+    and building a microbetag annotated network in a CX2 format. 
 
-    edgelist_df = get_edgelist(config)
+    Arguments:
+        config: An instance of the microbetag configuration class.
+
+    Returns:
+        net_cx2: A microbetag annotated network in CX2 format.
+    """
+
+    # Get the non-annotated network as dataframe
+    edgelist_df = get_edgelist(config.network)
 
     # e.g.  'bin_31': 'd__Bacteria;p__Proteobacteria;c__Alphaproteobacteria;o__Reyranellales;f__Reyranellaceae;g__Reyranella;s__',
     seq_id_to_taxonomy_dic = config.seq_to_taxon_df.set_index(
         config.seq_to_taxon_df.columns[0]
     )[config.seq_to_taxon_df.columns[1]].to_dict()
 
+    # Initialize non-annotated nodes and edges of the network in a format that can be used as input for the ndex2 library
     nodes, node_names, edges = init_nodes_and_edges(edgelist_df, seq_id_to_taxonomy_dic, config)
 
+    # Update nodes and edges with the microbetag annotations
     if len(os.listdir(config.predictions_path)) > 0:
         update_with_phen_traits(config, nodes, node_names)
 
     if len(os.listdir(config.faprotax_sub_tables)) > 0:
         update_with_faprotax_traits(config, nodes, node_names)
 
-    if config.net_cluster:  # os.path.exists(config.manta_net):
+    if config.net_cluster:
         manta_layout = update_with_manta(config, nodes, node_names)
 
-    if config.path_compl:  # os.path.exists(config.compl_file):
+    if config.path_compl:
         pathway_complements(config, edgelist_df, node_names, edges)
 
-    if config.seed_compl:  # os.path.exists(config.seed_complements):
+    if config.seed_compl:
         seed_complements(config, edgelist_df, node_names, edges)
 
     # Build cx2
@@ -667,7 +760,7 @@ def mtg_annotate_network(config):
     timepoint = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
     cx2_file  = os.path.join(config.output_dir, f"mtag_net_{timepoint}.cx2")
 
-    net_cx2.set_network_attributes({"name": "microbetag annotated network"})
+    net_cx2.set_network_attributes({"name": f"microbetag network @ {timepoint}"})
     net_cx2.write_as_raw_cx2(cx2_file)
 
     return net_cx2

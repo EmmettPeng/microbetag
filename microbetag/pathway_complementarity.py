@@ -1,5 +1,10 @@
-import os, json
-import ast  #  process trees of the Python abstract syntax grammar.
+"""
+This script aims at calculating and exporting patwhay complementarities in case of
+running microbetag locally, with user-provided genomes.
+"""
+import os
+import json
+import ast  # process trees of the Python abstract syntax grammar.
 
 import itertools
 import pyshorteners
@@ -18,13 +23,13 @@ def build_kegg_url(kegg_map, clean_path, missing_kos, shortener=None):
     """
     # Load the dictionary with the kegg modules and their corresponding maps
     color_mapp_base_url = "https://www.kegg.jp/kegg-bin/show_pathway?"
-    present_kos_color = "%09%23EAD1DC/"
+    present_kos_color   = "%09%23EAD1DC/"
     complemet_kos_color = "%09%2300A898/"
 
     # Make a url pointing at a colored kegg map based on what's on the beneficiary's genome
     # and what it gets as complement from the donor
     beneficiarys_kos = ""
-    complements_kos = ""
+    complements_kos  = ""
     for ko_term in clean_path:
         if ko_term not in missing_kos:
             beneficiarys_kos = "".join([beneficiarys_kos, ko_term, present_kos_color])
@@ -39,7 +44,7 @@ def build_kegg_url(kegg_map, clean_path, missing_kos, shortener=None):
         if shortener is not None:
             logger.info("Shortening the URL.")
             url_ko_map_colored = shortener.tinyurl.short(url_ko_map_colored)
-    except:
+    except Exception:
         url_ko_map_colored = "N/A"
 
     return url_ko_map_colored
@@ -194,7 +199,7 @@ def all_complements(
                                     list(set(missing_kos_for_alternative)),
                                     shortener,
                                 )
-                            except:
+                            except Exception:
                                 url = ""
                                 pass
                             unique_url_input[pc_comb] = url

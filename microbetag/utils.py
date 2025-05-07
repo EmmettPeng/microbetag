@@ -106,15 +106,20 @@ class SetEncoder(json.JSONEncoder):
 
 
 def mtg_logger(script):
+    """
+    Logger 
 
+    Arguments:
+        script:  __file__, __name__
+
+    Returns:
+        logger: a logging function mentioning the script 
+    """
     logger = logging.getLogger(script)
     logger.setLevel(logging.INFO)
-
     if not logger.handlers:
-        # handler to sys.stdout
         sh = logging.StreamHandler(sys.stdout)
         sh.setLevel(logging.INFO)
-        # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         formatter = colorlog.ColoredFormatter(
             "%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             log_colors={
@@ -128,7 +133,6 @@ def mtg_logger(script):
         sh.setFormatter(formatter)
         logger.addHandler(sh)
         logger.propagate = False  # Prevent duplicate logging
-
     return logger
 
 
@@ -369,8 +373,15 @@ def convert_to_json_serializable(obj):
         return list(obj)
     elif isinstance(obj, list):
         return [convert_to_json_serializable(item) for item in obj]
+    # elif isinstance(obj, dict):
+    #     return {key: convert_to_json_serializable(value) for key, value in obj.items()}
     elif isinstance(obj, dict):
-        return {key: convert_to_json_serializable(value) for key, value in obj.items()}
+        new_dict = {}
+        for key, value in obj.items():
+            if not isinstance(key, (str, int, float, bool, type(None))):
+                key = str(key)  # or use "|".join(key) if you want to preserve tuple structure better
+            new_dict[key] = convert_to_json_serializable(value)
+        return new_dict
     else:
         try:
             return json.dumps(obj)
@@ -459,6 +470,7 @@ def extend_complements(
     max_scratch_alt,
     pathway_complement_percentage,
     pathway_complements_dir,
+    on_the_fly=False
 ):
     """
     Extends pathway complement annotations based on given settings and descriptions.
@@ -479,51 +491,54 @@ def extend_complements(
         pathway_complements_extended: JSON file with the dictionary returned
     """
     # Load and process module descriptions
-    descrps = pd.read_csv(descrps_path, sep="\t", header=None)
+    descrps         = pd.read_csv(descrps_path, sep="\t", header=None)
     descrps.columns = ["category", "moduleId", "description"]
-    column_order = ["moduleId", "description", "category"]
-    descrps = descrps[column_order]
+    column_order    = ["moduleId", "description", "category"]
+    descrps         = descrps[column_order]
 
     # Deep copy the complements dictionary
     with open(complements_json, "r") as file:
         complements_dict = json.load(file)
-    # complements_dict = json.load(open(complements_json))
+
     complements_dict_ext = copy.deepcopy(complements_dict)
 
     # Process complements
     for beneficiary_bin, potential_donors in complements_dict.items():
         for potential_donor, compls in potential_donors.items():
-            if compls:
-                complements_dict_ext[beneficiary_bin][potential_donor] = {}
-                for compl in compls:
+            if not compls:
+                continue
 
-                    module_id   = compl[0][3:]  # Extract module ID
-                    kos_to_get  = compl[1]  # KOs required to complete the pathway
-                    complet_alt = compl[2]  # Alternative complements
+            complements_dict_ext[beneficiary_bin][potential_donor] = {}
 
-                    # Skip if the complement is too complex based on settings
-                    if len(complet_alt) == len(kos_to_get) > max_scratch_alt:
-                        continue
+            for compl in compls:
 
-                    # Skip if the percentage exceeds the threshold
-                    perce = len(kos_to_get) / len(complet_alt)
-                    if perce > pathway_complement_percentage:
-                        continue
+                module_id   = compl[0][3:] if compl[0].startswith("md") else compl[0]  # Extract module ID
+                kos_to_get  = compl[1]  # KOs required to complete the pathway
+                complet_alt = compl[2]  # Alternative complements
 
-                    # Prepare the complement string
-                    compl_str = [
-                        x if isinstance(x, str) else ";".join(x) for x in compl[1:]
-                    ]
+                # Skip if the complement is too complex based on settings
+                if len(complet_alt) == len(kos_to_get) > max_scratch_alt:
+                    continue
 
-                    # Fetch module description details
-                    triplet = descrps[
-                        descrps["moduleId"] == module_id
-                    ].values.tolist()[0]
+                # Skip if the percentage exceeds the threshold
+                perce = len(kos_to_get) / len(complet_alt)
+                if perce > pathway_complement_percentage:
+                    continue
 
-                    # Add extended complement details
-                    complements_dict_ext[beneficiary_bin][potential_donor][
-                        len(complements_dict_ext[beneficiary_bin][potential_donor])
-                    ] = (triplet + compl_str)
+                # Prepare the complement string
+                compl_str = [
+                    x if isinstance(x, str) else ";".join(x) for x in compl[1:]
+                ]
+
+                # Fetch module description details
+                triplet = descrps[
+                    descrps["moduleId"] == module_id
+                ].values.tolist()[0]
+
+                # Add extended complement details
+                complements_dict_ext[beneficiary_bin][potential_donor][
+                    len(complements_dict_ext[beneficiary_bin][potential_donor])
+                ] = (triplet + compl_str)
 
     # Save extended complements to JSON
     extended_path_compl_json = os.path.join(
@@ -649,17 +664,16 @@ def remove_nan_from_list(lst):
 
     return [x for x in lst if not is_any_nan(x)]
 
+
 def detect_separator(file_path):
     """
     Detect the separator used in a text file, i.e `\t`,  `,` , `;` etc.
     """
     try:
         with open(file_path, "r") as file:
-
             # Get the total file size
             file.seek(0, 2)  # Move to the end of the file
             file_size = file.tell()
-
             # Calculate 1% of the file size: 1e6 is 1MB
             percent_size = (
                 file_size
@@ -675,16 +689,13 @@ def detect_separator(file_path):
                 )
             )
             percent_size = max(percent_size, int(1e5))
-
             # Move to the start of the file
             file.seek(0)
             sample = file.read(percent_size)
-
             # Use csv.Sniffer to detect the dialect
             sniffer = csv.Sniffer()
             dialect = sniffer.sniff(sample)
             return dialect.delimiter
-
     except Exception:
         raise TypeError(f"Cannot get delimiter for file {file_path}")
 

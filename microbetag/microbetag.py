@@ -40,6 +40,7 @@ from .tools import (
 )
 from .db import (
     get_phen_traits,
+    get_path_compls_otf
     # something for path compls
 )
 from .config import Config
@@ -80,13 +81,17 @@ def run_microbetag(config):
     # phen annotations
     # ----------------
     if config.phen_traits:
+
+        logger.info("[STEP] PREDICTING PHENOTYPIC TRAITS")
+
         if config.bins_ids is not None and not config.onthefly:
-            logger.info("[STEP] PREDICTING PHENOTYPIC TRAITS")
+
             phenotrex_genotype(config=config)
             phenotrex_predict(config=config)
 
         elif config.onthefly:
-            get_phen_traits(config=config)
+
+            get_phen_traits(config.repr_genomes_present, config.predictions_path)
 
     # ----------------
     # Prodigal - ORF prediction
@@ -96,7 +101,7 @@ def run_microbetag(config):
     ) and config.ko_merged is None and not config.onthefly:
         if len(os.listdir(config.prodigal)) != len(config.bins_ids):
 
-            logger.info("[STEP  ] PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
+            logger.info("[STEP] :: PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
 
             if config.bin_filenames is None:
                 logger.error(
@@ -125,6 +130,8 @@ def run_microbetag(config):
     # Pathway complementarity
     # ----------------
     if config.pathway_complementarity:
+
+        logger.info("[STEP] EXTRACTING PATHWAY COMPLEMENTARITIES.")
 
         # ----------------
         # KEGG annotation - based on the DiTing implementation // required in case of pathway complementarities
@@ -177,8 +184,8 @@ def run_microbetag(config):
         # ----------------
 
         if config.onthefly:
-            # TODO (Haris Zafeiropoulos, 2025-05-01):
-            print("needs to be buiilts")
+
+            config.mspecies_map_df = get_path_compls_otf(config)
 
         else:
 
@@ -188,7 +195,6 @@ def run_microbetag(config):
                 config.compl_file
             ):
 
-                print("[STEP ] GET PATHWAY COMPLEMENTS ")
                 print(pivot_df)
                 # bin_kos_per_module, alt_to_gapfill, complements =
                 _, _ = export_pathway_complementarities(config, pivot_df)

@@ -178,7 +178,7 @@ class Config:
 
             # NOTE: Not all sequence ids in the seq_ids need to have a taxonomy in this case -- only those coming from the abundance table
             # Yet, in case that the network has taxa not present in the abundance table, apparently it will lead to errors.
-            network_df = get_edgelist(self)
+            network_df = get_edgelist(self.network)
             net_seq_ids = (
                 pd.concat([network_df.iloc[:, 0], network_df.iloc[:, 1]])
                 .unique()

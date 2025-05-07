@@ -1,10 +1,13 @@
 import os
+import ast
 import json
 import pandas as pd
 import mysql.connector
 from mysql.connector import pooling
+from typing import Dict, Set, Tuple, Any
 
-from .utils import mtg_logger
+from .utils import mtg_logger, convert_to_json_serializable
+from .networks import get_edgelist
 
 logger = mtg_logger(__file__)
 _KEGG_MAPPINGS = os.path.join(
@@ -135,26 +138,28 @@ def get_patric_id_of_gc_accession_list(gc_accession_list=["GCA_003184265.1"]):
 # --------
 # Phen related
 # --------
-def get_phen_traits(config):
-
+def get_phen_traits(repr_genomes_present, output_dir):
+    """
+    Returns predictions for a list of genomes 
+    """
+    # Get predictions for each trait, for all genomes matched to the taxonomies given from the user.
     traits_per_genome = {
         genome: get_phendb_traits(genome)
-        for genome in config.repr_genomes_present
+        for genome in repr_genomes_present
     }
 
+    # Build a df from the predictions dictionary
     df = pd.DataFrame(traits_per_genome)
 
     # Drop 'gtdbId' only if it exists in the index to avoid errors
     df = df.drop("gtdbId", errors="ignore")  # drop to make it safe if "gtdbId" isn't present.
 
-    # all_traits_file = os.path.join(config.predictions_path, "all_predictions.tsv")
-    # df.to_csv(all_traits_file, sep="\t")
-
-    write_trait_file(df, config.predictions_path)
+    # Export predictions per trait to a 3-col file.
+    write_trait_file(df, output_dir)
 
 
 def phen_query(gtdb_id):
-
+    """  """
     return "".join([
         "SELECT * FROM phenDB WHERE SUBSTRING_INDEX(gtdbId, '.', 1) = SUBSTRING_INDEX('",
         gtdb_id,
@@ -186,7 +191,11 @@ def get_phendb_traits(gtdb_genome_id="GCA_018819265.1"):
 
 
 def write_trait_file(df, output_dir=None):
-
+    """
+    Saves phenotypic trait predictions of a trait for a set of genomes in a file, in a 3-column format.
+    Identifier, Trait present, Confidence
+    The values the 'Trait present' column may get, is 'YES, 'NO', and 'N/A'.
+    """
     if output_dir is None:
         output_dir = os.getcwd()
 
@@ -215,13 +224,134 @@ def write_trait_file(df, output_dir=None):
 # Pathway complementarity
 # --------
 
-def get_complements_of_list_of_pair_of_ncbiIds(relative_genomes, pairs_of_interest):
+def get_path_compls_otf(config):
     """
-    pairs_of_interest={("1260918", "1819566")}
-    relative_genomes={
-        "1260918": {"GCF_002102185.1"},
-        "1819566": {"GCF_009711525.1"}
+    On the fly way to get pathway complementarities. Builds the pathCompls.json and
+    the pathway_complements_extended.json files.
+
+    The first file, in the stand-alone version lools like this:
+    {"bin_101": {
+        "bin_101": [],
+        "bin_151": [["md:M00019", ["K00826"], ["K01652", "K01653", "K00053", "K01687", "K00826"],
+                    "https://www.kegg.jp/kegg-bin/show_pathway?map00290/K00826%09%23EAD1DC/K01687%09%2300A898/"], ..]
+        },..
     }
+    where the elements regarding the complement and the alternative are actually lists, and not strings, while the latter:
+    {"bin_101": {
+        "bin_101": [],
+        "bin_151": {"0": ["M00019", "Valine/isoleucine biosynthesis", "Branched-chain amino acid metabolism",
+                            "K00826", "K01652;K01653;K00053;K01687;K00826", "https://...]
+        }
+    }
+
+    To build those files for the on-the-fly version (otf), this function makes use of the config.otf_seq_tax_df
+    attribute of the config, as returned by the taxonomy.py script.
+
+    It creates a list of tuples with the NCBI Taxonomy Ids of found related taxa (in the edgelist)
+    and using their corresponding GTDB representative genomes gets their complements.
+
+    Arguments:
+        config: Insance of the microbetat'g config class but as edited in the app.py script where the otf_seq_tax_df
+                attribute is added
+
+    Returns:
+        mspecies_map_df: A pd.DataFrame with nodes names, NCBI Taxonomy ids and GTDB representative genomes for those
+                        edges of the network that were both mapped to at least a GTDB genome.
+    """
+
+    edgelist_df = get_edgelist(config.network)
+    seq_map_df  = config.otf_seq_tax_df.dropna(subset=["species_ncbi_id"]).copy()
+
+    merged = edgelist_df.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
+                               left_on='node_A', right_on='microbetag_id', how='left') \
+        .rename(columns={'species_ncbi_id': 'species_ncbi_id_A',
+                         'gtdb_gen_repr': 'gtdb_gen_repr_A'}) \
+        .drop(columns='microbetag_id')
+
+    # Merge again to get info for nodeB
+    merged = merged.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
+                          left_on='node_B', right_on='microbetag_id', how='left') \
+        .rename(columns={'species_ncbi_id': 'species_ncbi_id_B',
+                         'gtdb_gen_repr': 'gtdb_gen_repr_B'}) \
+        .drop(columns='microbetag_id')
+
+    # Clean and apply transformations
+    filtered = merged.dropna(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B']).copy()
+
+    filtered[['gtdb_gen_repr_A', 'gtdb_gen_repr_B']] = filtered[
+        ['gtdb_gen_repr_A', 'gtdb_gen_repr_B']].applymap(safe_literal_eval)
+
+    filtered[["species_ncbi_id_A", "species_ncbi_id_B"]] = filtered[
+        ["species_ncbi_id_A", "species_ncbi_id_B"]].astype(int)
+
+    # Explode and drop duplicates
+    exploded = filtered.explode('gtdb_gen_repr_A').explode('gtdb_gen_repr_B').reset_index(drop=True)
+    mspecies_map_df = exploded.drop_duplicates(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B'])
+
+    # Build pairs of interest and relative genomes
+    pairs_of_interest = {
+        (str(row['species_ncbi_id_A']), str(row['species_ncbi_id_B']))
+        for _, row in mspecies_map_df.iterrows()
+    }
+    pairs_of_interest.update({(b, a) for a, b in pairs_of_interest})
+    relative_genomes = {
+        str(row['species_ncbi_id_A']): {str(row['gtdb_gen_repr_A'])}
+        for _, row in mspecies_map_df.iterrows()
+    }
+    relative_genomes.update(
+        {str(row['species_ncbi_id_B']): {str(row['gtdb_gen_repr_B'])}
+         for _, row in mspecies_map_df.iterrows()}
+    )
+
+    compls = get_path_compls_for_ncbi_ids(relative_genomes, pairs_of_interest)
+    logger.info(compls)
+
+    # NOTE (Haris Zafeiropoulos, 2025-05-05):
+    # We will use the genome id here, even if the same file in the stand-alone has the sequence ids.
+    compls_format = {}
+    for _, j in compls.items():
+        for k, v in j.items():
+            ben_genome, don_genome = k
+            if ben_genome not in compls_format:
+                compls_format[ben_genome] = {}
+            new_cases = []
+            for case in v:  # case is like [[...]]
+                sub = case[0]
+                formatted = [
+                    sub[0],                      # module_id
+                    sub[1].split(";"),                    # essential_kos wrapped in list
+                    sub[2].split(";"),                    # all_kos wrapped in list
+                    sub[3]                       # status
+                ]
+                new_cases.append(formatted)
+            compls_format[ben_genome][don_genome] = new_cases
+
+    # Serialize the formatted complements dictionary
+    compls_serial = convert_to_json_serializable(compls_format)
+
+    with open(config.compl_file, "w") as f:
+        json.dump(compls_serial, f)
+
+    return mspecies_map_df
+
+
+def safe_literal_eval(value):
+    try:
+        # Attempt to evaluate the value if it's a string that looks like a list
+        return ast.literal_eval(value) if isinstance(value, str) else value
+    except (ValueError, SyntaxError):
+        # If it's not a valid list string, return the original value
+        return value
+
+
+def get_path_compls_for_ncbi_ids(relative_genomes: Dict[str, Set[str]], pairs_of_interest: Set[Tuple[str, str]]):
+    """
+
+    Arguments:
+
+        relative_genomes: A dictionary {"1260918": {"GCF_002102185.1"}, "1819566": {"GCF_009711525.1"}}
+
+        pairs_of_interest={("1260918", "1819566")}
     """
 
     logger.info("===> Building queries for genome pairs...")
@@ -238,6 +368,7 @@ def get_complements_of_list_of_pair_of_ncbiIds(relative_genomes, pairs_of_intere
     all_compl_ids2coloured_compls = get_coloured_complements(pairs_to_compl_ids)
 
     logger.info("===> Assembling final result...")
+
     return build_pairs_complements(pairs_to_compl_ids, all_compl_ids2coloured_compls)
 
 
@@ -298,7 +429,16 @@ def map_queries_to_pairs(complements_ids_queries, unique_queries2comples):
     return pairs_to_compl_ids
 
 
-def get_coloured_complements(pairs_to_compl_ids):
+def get_coloured_complements(pairs_to_compl_ids: Dict[Tuple[str, str], dict[Tuple[str, str], list[str]]]):
+    """
+    Gets thes actual complement using its unique complementId and builds its KEGG url.
+
+    Arguments:
+        pairs_to_compl_ids: {('1260918', '1819566'): {('GCA_002102185.1', 'GCA_009711525.1'): ['180131', ..']}}
+
+    Returns:
+        pairs_complements: []
+    """
     unique_compl_ids = {
         compl_id
         for genome_map in pairs_to_compl_ids.values()
@@ -317,8 +457,10 @@ def get_coloured_complements(pairs_to_compl_ids):
     cnx_pool                 = init_connection_pool()
     my_connection            = cnx_pool.get_connection()
     cursor                   = my_connection.cursor()
+
     query_result             = execute_in_a_pool(cursor, query)
     query_result_list        = [[r] for r in query_result]
+
     colored_complements_list = build_kegg_urls(query_result_list)
 
     return dict(zip(unique_compl_ids, colored_complements_list))
@@ -342,48 +484,43 @@ def build_kegg_urls(genome_pair_compls):
     Takes as input the complements list between two genomes and
     build urls to colorify the related to the module kegg map based on the KO terms of the beneficiary (pink)
     and those it gets from the donor (green).
-    NOTE: some modules do not belong to any map, e.g. https://www.kegg.jp/module/M00705. In these cases, we will have a N/A value in the url.
+
+    Notes:
+        Some modules do not belong to any map, e.g. https://www.kegg.jp/module/M00705. In these cases, we will have a N/A value in the url.
     """
+
+    # NOTE (Haris Zafeiropoulos, 2025-05-05):
+    # The stand-alone version has a similar function on the pathway_complementarity.py, consider making a consensus one.
+
     # Constants
     color_map_base_url   = "https://www.kegg.jp/kegg-bin/show_pathway?"
     present_kos_color    = "%09%23EAD1DC/"
     complement_kos_color = "%09%2300A898/"
-
     # Load module-to-map mappings
     module_map_file = os.path.join(_KEGG_MAPPINGS, "module_map_pairs.tsv")
-
-    logger.info(module_map_file)
-
-    with open(module_map_file, "r") as f:
-        module_map = {
-            line.split("\t")[0][3:]: line.split("\t")[1].strip()[1:-1]
-            for line in f
-        }
-
+    df              = pd.read_csv(module_map_file, sep="\t", header=None, names=["module", "map"])
+    df["module"]    = df["module"].str.replace("md:", "", regex=False).str.strip()
+    df["map"]       = df["map"].str.strip()
+    #
+    module_map = dict(zip(df["module"], df["map"]))
     updated_complements = []
-
     for [module_id, complement_str, ko_terms_str] in [list(c[0]) for c in genome_pair_compls]:
-
         beneficiary_kos    = []
         complement_kos     = []
         complement_kos_set = set(complement_str.split(";"))
         ko_terms           = ko_terms_str.split(";")
-
+        #
         for ko in ko_terms:
             if ko in complement_kos_set:
                 complement_kos.append(ko + complement_kos_color)
             else:
                 beneficiary_kos.append(ko + present_kos_color)
-
         # Construct URL or fallback
         url    = "N/A"
         map_id = module_map.get(module_id)
         if map_id:
             url = f"{color_map_base_url}{map_id}/" + "".join(beneficiary_kos + complement_kos)
-
         # Append new colored URL to the record
         updated_complements.append([[module_id, complement_str, ko_terms_str, url]])
-
+    #
     return updated_complements
-
-# ====================================================

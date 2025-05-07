@@ -113,12 +113,12 @@ def read_cyjson(filename, direction=False):
     return graph
 
 
-def get_edgelist(conf):
+def get_edgelist(network_file):
     """Loads a 3-column network file as pd.DataFrame"""
-    delimiter = detect_separator(conf.network)
-    line_num, header = find_three_column_format(conf.network, delimiter)
+    delimiter = detect_separator(network_file)
+    line_num, header = find_three_column_format(network_file, delimiter)
     edgelist = pd.read_csv(
-        conf.network, sep=delimiter, skiprows=line_num - 1, header=header
+        network_file, sep=delimiter, skiprows=line_num - 1, header=header
     )
     edgelist.columns = ["node_A", "node_B", "microbetag::weight"]
     return edgelist
@@ -132,7 +132,7 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
     It get a list of dictionaries where each dictionary is an edge and returns the basenetwork in a .cyjs format.
     """
 
-    edgelist = get_edgelist(conf)
+    edgelist = get_edgelist(conf.network)
     edgelist.columns = ["node_A", "node_B", "microbetag::weight"]
     edgelist_as_a_list_of_dicts = edgelist.to_dict(orient="records")
 

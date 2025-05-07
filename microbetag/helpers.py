@@ -33,10 +33,12 @@ class PathwayComplementarity:
         self.output_dir = config.output_dir
 
         # KEGG related paths to be filled based on user's settings
-        self.ko_merged        = None
-        self.kegg_db_dir      = None
-        self.kegg_annotations = None
-        self.kegg_pieces_dir  = None
+        # self.ko_merged        = None
+        # self.kegg_db_dir      = None
+        # self.kegg_annotations = None
+        # self.kegg_pieces_dir  = None
+
+        # Init
         self.initialize(config)
 
     def setup_kegg_annotations(self):
@@ -81,12 +83,13 @@ class PathwayComplementarity:
                 "max_length_for_complement_from_scratch", {}
             ).get("value")
             self.max_scratch_alt = max_scratch_alt if max_scratch_alt is not None else 1
+
             # Set up KEGG annotations 3-column file
             ko_merged = self.conf.yaml.get("ko_merged_file", {}).get("file_path")
             ko_merged = resolve_file_path(self.base_dir, ko_merged)
             self.ko_merged = ko_merged
 
-            if self.ko_merged is None:
+            if self.ko_merged is None and not conf.onthefly:
                 self.setup_kegg_annotations()
                 self.kegg_db_dir = self.get_kofam_db_path()
 

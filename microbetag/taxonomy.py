@@ -20,6 +20,35 @@ RANKS = ["domain", "phylum", "class", "order", "family", "genus", "species"]
 def map_seq_to_ncbi_tax_level_and_id(
     abd_tab, tax_col, seqId, tax_scheme, tax_delim, mappings, get_children=None
 ):
+    """
+
+    Returns 
+        splt_tax: A pd.DataFrame with taxonomy levels, NCBI accession ids and
+                  GTDB representative genomes (if available). A file callsed seq_map.tsv
+                  with its content is saved in the main output folder.
+    Example:
+        splt_tax:
+        >>> df.iloc[4,:]
+        Unnamed: 0                              5
+        domain                           Bacteria
+        phylum                         Firmicutes
+        class                          Clostridia
+        order                     Oscillospirales
+        family                   Oscillospiraceae
+        genus                      Flavonifractor
+        species            Flavonifractor plautii
+        seqId                             ASV0012
+        microbetag_id                     ASV0012
+        extendedSpecies    Flavonifractor plautii
+        refSpecies         Flavonifractor plautii
+        species_ncbi_id                  411475.0
+        gtdb_gen_repr         ['GCA_000239295.1']
+        genus_ncbi_id                    946234.0
+        family_ncbi_id                   216572.0
+        ncbi_tax_id                      411475.0
+        ncbi_tax_level                   mspecies
+        Name: 4, dtype: object
+    """
     # To-do [2025-04-23, Haris Zafeiropoulos]:
     # Check if there is an easy way to go on with get_children
 
