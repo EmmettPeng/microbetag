@@ -437,10 +437,9 @@ class SeedComplementarityHandler:
     def seeds_paths(self, config):
 
         # Directory for seeds complementarity
-        seedset_dir = config.yaml.get("prev_calc_seed_sets", {}).get("dir_path")
-        self.seeds  = seedset_dir or os.path.join(
-            config.output_dir, "seeds_complementarity"
-        )
+        # seedset_dir = config.yaml.get("prev_calc_seed_sets", {}).get("dir_path")
+        # self.seeds  = seedset_dir or os.path.join(config.output_dir, "seeds_complementarity")
+        self.seeds  = os.path.join(config.output_dir, "seeds_complementarity")
         os.makedirs(self.seeds, exist_ok=True)
 
         # NOTE (Haris Zafeiropoulos, 2025-04-29): These 2 are supposed to be the .json files.
@@ -452,10 +451,17 @@ class SeedComplementarityHandler:
         self.seed_complements = os.path.join(self.seeds, "seed_complements.pckl")
         self.phylomint_scores = os.path.join(self.seeds, "phylomint_scores.tsv")
 
+        # NOTE (Haris Zafeiropoulos, 2025-05-07):
+        # If prev_conf and prev_nonseeds are None, then module_seeds and module_nonseeds will be built during the run
+        # Otherwise, these neeed to
         self.module_seeds    = os.path.join(self.seeds, "kegg_module_related_seeds.pckl")
-        self.module_nonseeds = os.path.join(
-            self.seeds, "kegg_module_related_nonseeds.pckl"
-        )
+
+        if config.onthefly:
+            self.module_nonseeds = config.yaml.get("prev_nonseeds_module", {}).get("file_path")
+        else:
+            self.module_nonseeds = os.path.join(
+                self.seeds, "kegg_module_related_nonseeds.pckl"
+            )
 
 
 def manta_input_net(config):

@@ -52,22 +52,26 @@ def run_seed_complementarity(config):
                 dest_path = os.path.join(config.genres, os.path.basename(file))
                 shutil.move(file, dest_path)
 
-    phylomint = ExportSeedComplementarities(config)
+    seeds = ExportSeedComplementarities(config)
 
     # If no seed and/or non-seed sets are missing, get them
-    if phylomint.skip_sets is False:
-        phylomint.get_sets()
+    if seeds.skip_sets is False and seeds.api is False:
+        seeds.get_sets()
 
     # If either the phylomint scores file or the one with the seed complementarities (pckl) is missing, exract them
-    if phylomint.get_scores or phylomint.get_complements:
-        phylomint.get_scores_and_compls()
+    if seeds.get_scores or seeds.get_complements:
+        seeds.get_scores_and_compls()
 
 
 def hmmsearch(params: List):
     """
     Function to invoke hmmsearch software.
 
-    params: list of parameters to be passed to the hmmsearch function.
+    Arguments:
+        params: list of parameters to be passed to the hmmsearch function.
+
+    Note:
+        We use only 1 cpu since we use a muliprocessing.Pool in the kegg_annotation(). 
     """
     (threshold_method, threshold, outtype, output, hmm_db, faa) = params
 

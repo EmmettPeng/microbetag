@@ -7,8 +7,9 @@
 import os
 import re
 import sys
-import json
 import csv
+import ast
+import json
 import time
 import copy
 import glob
@@ -159,6 +160,15 @@ def get_files_with_suffixes(directory, suffixes):
             if any(file.endswith(suffix) for suffix in suffixes):
                 matching_files.append(os.path.join(root, file))
     return matching_files
+
+
+def safe_literal_eval(value):
+    try:
+        # Attempt to evaluate the value if it's a string that looks like a list
+        return ast.literal_eval(value) if isinstance(value, str) else value
+    except (ValueError, SyntaxError):
+        # If it's not a valid list string, return the original value
+        return value
 
 
 def flatten(list_of_lists: List):
@@ -586,31 +596,8 @@ def load_phenotypic_traits(conf):
                                 }
         phentraits: A set witt the traits presentt
     """
-
-    logger.info("Loading phenotypic traits")
-
     bin_phen_traits = {}
     phentraits      = set()
-
-    # all_phen_df = os.path.join(
-    #     conf.predictions_path, "phen_traits.tsv"
-    # )  # TODO: consider giving this also as an argument in the config -- MAKE SURE THEY GIVE SEQUENCE ID AND NOT GTDB ID !!
-
-    # if os.path.exists(all_phen_df):
-    #     df = pd.read_csv(all_phen_df, sep="\t")
-    #     df = df.drop(["NCBI_ID", "gtdb_id"], axis=1)
-    #     phentraits = {x for x in df.columns if "Score" not in x}
-    #     phentraits.remove("sequence_id")
-    #     list_of_dics = df.to_dict(orient="records")
-
-    #     for entry in list_of_dics:
-    #         bin_phen_traits[entry["sequence_id"]] = {}
-    #         for trait in phentraits:
-    #             bin_phen_traits[entry["sequence_id"]][trait] = {
-    #                 "presence": entry[trait],
-    #                 "confidence": entry["".join([trait, "Score"])],
-    #             }
-    # else:
 
     prediction_files = [
         os.path.join(conf.predictions_path, file)

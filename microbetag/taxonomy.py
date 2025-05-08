@@ -3,6 +3,9 @@ import ast
 import numpy as np
 import pandas as pd
 
+from .utils import safe_literal_eval
+from .networks import get_edgelist
+
 if __name__ == "__main__":
     # from variables import MAPPINGS, GENERA_NCBI_IDS, FAMILIES_NCBI_IDS
     from seed_complementarity import mtg_logger
@@ -273,3 +276,64 @@ def assign_tax_level(row):
             return level
 
     return "higher than family"
+
+
+def otf_seqid_ncbi_gtdb__map(config):
+    """
+    Builds a dataframe with sequence ids of nodes A and B found associated in the 
+    co-occurrence network followed by their corresponding NCBI Taxonomy ids and the 
+    representative GTDB genomes.
+
+    Returns:
+        pairs_of_interest: {("",""). ("","")}
+        relative_genomes: {ncbi_id: [gc, gc, gc], ..}
+        mspecies_map_df: 
+    """
+    edgelist_df = get_edgelist(config.network)
+    seq_map_df  = config.otf_seq_tax_df.dropna(subset=["species_ncbi_id"]).copy()
+
+    merged = edgelist_df.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
+                               left_on='node_A', right_on='microbetag_id', how='left') \
+        .rename(columns={'species_ncbi_id': 'species_ncbi_id_A',
+                         'gtdb_gen_repr': 'gtdb_gen_repr_A'}) \
+        .drop(columns='microbetag_id')
+
+    # Merge again to get info for nodeB
+    merged = merged.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
+                          left_on='node_B', right_on='microbetag_id', how='left') \
+        .rename(columns={'species_ncbi_id': 'species_ncbi_id_B',
+                         'gtdb_gen_repr': 'gtdb_gen_repr_B'}) \
+        .drop(columns='microbetag_id')
+
+    # Clean and apply transformations
+    filtered = merged.dropna(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B']).copy()
+
+    filtered[['gtdb_gen_repr_A', 'gtdb_gen_repr_B']] = filtered[
+        ['gtdb_gen_repr_A', 'gtdb_gen_repr_B']].applymap(safe_literal_eval)
+
+    filtered[["species_ncbi_id_A", "species_ncbi_id_B"]] = filtered[
+        ["species_ncbi_id_A", "species_ncbi_id_B"]].astype(int)
+
+    # Explode and drop duplicates
+    exploded        = filtered.explode('gtdb_gen_repr_A').explode('gtdb_gen_repr_B').reset_index(drop=True)
+    mspecies_map_df = exploded.drop_duplicates(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B'])
+
+    # Build pairs of interest and relative genomes
+    pairs_of_interest = {
+        (str(row['species_ncbi_id_A']), str(row['species_ncbi_id_B']))
+        for _, row in mspecies_map_df.iterrows()
+    }
+    pairs_of_interest.update({(b, a) for a, b in pairs_of_interest})
+    relative_genomes = {
+        str(row['species_ncbi_id_A']): {str(row['gtdb_gen_repr_A'])}
+        for _, row in mspecies_map_df.iterrows()
+    }
+    relative_genomes.update(
+        {str(row['species_ncbi_id_B']): {str(row['gtdb_gen_repr_B'])}
+         for _, row in mspecies_map_df.iterrows()}
+    )
+
+    outfile = os.path.join(config.output_dir, "edge_map.tsv")
+    mspecies_map_df.to_csv(outfile)
+
+    return pairs_of_interest, relative_genomes, mspecies_map_df

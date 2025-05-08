@@ -21,7 +21,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 
 with open(os.path.join(script_dir, ".env_dev.json")) as f:
     c = json.load(f)
-    config = {
+    db_config = {
         "user": c["Luna"]["USER_NAME"],
         "password": c["Luna"]["PASSWORD"],
         "host": c["Luna"]["HOST"],      # 'localhost'
@@ -36,7 +36,7 @@ def execute(phrase):
     """
     # Database connection configuration
     # [TODO] Switch to "db" when running on the container
-    cnx    = mysql.connector.connect(**config)
+    cnx    = mysql.connector.connect(**db_config)
     cursor = cnx.cursor()
     cursor.execute(phrase)
     rows = cursor.fetchall()
@@ -68,10 +68,10 @@ def init_connection_pool():
     connection_pool = pooling.MySQLConnectionPool(
         pool_name="microbetagDB_pool",
         pool_size=5,
-        user=config["user"],
-        password=config["password"],
-        host=config["host"],
-        database=config["database"],
+        user=db_config["user"],
+        password=db_config["password"],
+        host=db_config["host"],
+        database=db_config["database"],
     )
     return connection_pool
 
@@ -92,10 +92,8 @@ def alt_genome_prefix(gc):
     """
     if gc.startswith("GCA_"):
         gc_alt = gc.replace("GCA_", "GCF_")
-
     elif gc.startswith("GCF_"):
         gc_alt = gc.replace("GCF_", "GCA_")
-
     else:
         return 0
     return gc_alt
@@ -130,6 +128,10 @@ def get_patric_id_of_gc_accession_list(gc_accession_list=["GCA_003184265.1"]):
         if gc_alt != 0:
             query = f"SELECT patricId FROM patricId2genomeId WHERE gtdbGenomeAccession = '{gc}' OR gtdbGenomeAccession = '{gc_alt}';"
             patricId = execute(query)
+            # NOTE (Haris Zafeiropoulos, 2025-05-08): Some PATRIC ids have a different suffix in the metadata file than
+            # in their corresponding assembies used for the seed complementarity step.
+            # Yet, keeping the part before the dot (.) - using int(patricId[0][0]) cannot be a solution since in many cases
+            # we have several strains for the same species, meaning, several after the dot parts.
             gc_to_patric_dict[gc] = patricId[0][0] if patricId and patricId[0] else None
     logger.info(gc_to_patric_dict)
     return gc_to_patric_dict
@@ -259,54 +261,11 @@ def get_path_compls_otf(config):
                         edges of the network that were both mapped to at least a GTDB genome.
     """
 
-    edgelist_df = get_edgelist(config.network)
-    seq_map_df  = config.otf_seq_tax_df.dropna(subset=["species_ncbi_id"]).copy()
-
-    merged = edgelist_df.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
-                               left_on='node_A', right_on='microbetag_id', how='left') \
-        .rename(columns={'species_ncbi_id': 'species_ncbi_id_A',
-                         'gtdb_gen_repr': 'gtdb_gen_repr_A'}) \
-        .drop(columns='microbetag_id')
-
-    # Merge again to get info for nodeB
-    merged = merged.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
-                          left_on='node_B', right_on='microbetag_id', how='left') \
-        .rename(columns={'species_ncbi_id': 'species_ncbi_id_B',
-                         'gtdb_gen_repr': 'gtdb_gen_repr_B'}) \
-        .drop(columns='microbetag_id')
-
-    # Clean and apply transformations
-    filtered = merged.dropna(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B']).copy()
-
-    filtered[['gtdb_gen_repr_A', 'gtdb_gen_repr_B']] = filtered[
-        ['gtdb_gen_repr_A', 'gtdb_gen_repr_B']].applymap(safe_literal_eval)
-
-    filtered[["species_ncbi_id_A", "species_ncbi_id_B"]] = filtered[
-        ["species_ncbi_id_A", "species_ncbi_id_B"]].astype(int)
-
-    # Explode and drop duplicates
-    exploded = filtered.explode('gtdb_gen_repr_A').explode('gtdb_gen_repr_B').reset_index(drop=True)
-    mspecies_map_df = exploded.drop_duplicates(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B'])
-
-    # Build pairs of interest and relative genomes
-    pairs_of_interest = {
-        (str(row['species_ncbi_id_A']), str(row['species_ncbi_id_B']))
-        for _, row in mspecies_map_df.iterrows()
-    }
-    pairs_of_interest.update({(b, a) for a, b in pairs_of_interest})
-    relative_genomes = {
-        str(row['species_ncbi_id_A']): {str(row['gtdb_gen_repr_A'])}
-        for _, row in mspecies_map_df.iterrows()
-    }
-    relative_genomes.update(
-        {str(row['species_ncbi_id_B']): {str(row['gtdb_gen_repr_B'])}
-         for _, row in mspecies_map_df.iterrows()}
-    )
-
-    compls = get_path_compls_for_ncbi_ids(relative_genomes, pairs_of_interest)
-    logger.info(compls)
+    # Ge the complements!
+    compls = get_path_compls_for_ncbi_ids(config.relative_genomes, config.pairs_of_interest)
 
     # NOTE (Haris Zafeiropoulos, 2025-05-05):
+    # Fix complements in the format set for the MGG
     # We will use the genome id here, even if the same file in the stand-alone has the sequence ids.
     compls_format = {}
     for _, j in compls.items():
@@ -315,12 +274,12 @@ def get_path_compls_otf(config):
             if ben_genome not in compls_format:
                 compls_format[ben_genome] = {}
             new_cases = []
-            for case in v:  # case is like [[...]]
+            for case in v:                       # case is like [[...]]
                 sub = case[0]
                 formatted = [
                     sub[0],                      # module_id
-                    sub[1].split(";"),                    # essential_kos wrapped in list
-                    sub[2].split(";"),                    # all_kos wrapped in list
+                    sub[1].split(";"),           # essential_kos wrapped in list
+                    sub[2].split(";"),           # all_kos wrapped in list
                     sub[3]                       # status
                 ]
                 new_cases.append(formatted)
@@ -331,17 +290,6 @@ def get_path_compls_otf(config):
 
     with open(config.compl_file, "w") as f:
         json.dump(compls_serial, f)
-
-    return mspecies_map_df
-
-
-def safe_literal_eval(value):
-    try:
-        # Attempt to evaluate the value if it's a string that looks like a list
-        return ast.literal_eval(value) if isinstance(value, str) else value
-    except (ValueError, SyntaxError):
-        # If it's not a valid list string, return the original value
-        return value
 
 
 def get_path_compls_for_ncbi_ids(relative_genomes: Dict[str, Set[str]], pairs_of_interest: Set[Tuple[str, str]]):
@@ -476,8 +424,6 @@ def build_pairs_complements(pairs_to_compl_ids, all_compl_ids2coloured_compls):
                     pairs_complements.setdefault(ncbi_pair, {}).setdefault(genome_pair, []).append(colored)
     return pairs_complements
 
-
-# ====================================================
 
 def build_kegg_urls(genome_pair_compls):
     """

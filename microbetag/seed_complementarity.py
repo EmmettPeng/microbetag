@@ -1,7 +1,7 @@
 # System
 import os
-import sys
 import json
+import gzip
 import pickle
 import tarfile
 
@@ -56,9 +56,12 @@ class ExportSeedComplementarities:
     def __init__(self, config):
 
         logger.info("Initiating Export Seed Complementarities class with params.")
-        self.api     = config.onthefly
-        self.outdir  = config.seeds
-        self.threads = config.threads
+
+        self.api      = config.api if hasattr(config, 'api') else False
+        self.onthefly = config.onthefly if hasattr(config, 'onthefly') else False
+
+        self.outdir   = config.seeds
+        self.threads  = config.threads
 
         self.skip_sets     = config.skip_sets
         self.prev_conf     = config.prev_conf
@@ -68,9 +71,9 @@ class ExportSeedComplementarities:
             config.seed_ko_mo
         )
 
-        if self.api:
-            # In case of API, list of species of interest
-            self.patric_ids      = config.patric_ids
+        if self.api or self.onthefly:
+
+            self.gc_to_patric_ids      = config.gc_to_patric_ids
             self.get_complements = True
             self.get_scores      = config.get_scores
             self.get_complements = config.get_complements
@@ -81,8 +84,7 @@ class ExportSeedComplementarities:
             self.save_dics      = True
             self.get_scores     = not os.path.exists(self.scores_outfile)
 
-            self.seed_complements    = config.seed_complements  # seed_complements.pckl
-            self.get_complements     = not os.path.exists(self.seed_complements)
+            self.get_complements     = not os.path.exists(self.seed_compls_pckl)
 
             # Prefixes - suffixes
             self.compound_prefix = "M"
@@ -91,6 +93,7 @@ class ExportSeedComplementarities:
 
             self.namespace = "modelseed"
             if config.genre_reconstruction_with == "carveme":
+
                 logger.info("Load bigg2seed map...")
                 self.namespace = "BiGG"
                 self.bigg2seed = bigg_to_seed_mapping_df(config.metanetx_compounds)
@@ -99,21 +102,24 @@ class ExportSeedComplementarities:
             self.module_nonseeds  = config.module_nonseeds   # kegg_module_related_nonseeds.pckl
 
             self.get_scores      = not os.path.exists(self.scores_outfile)
-            self.get_complements = not os.path.exists(self.seed_complements)
+            self.get_complements = not os.path.exists(self.seed_compls_pckl)
+
+        if not self.api:
+            self.seed_compls_pckl    = config.seed_complements  # seed_complements.pckl
 
         # NOTE (Haris Zafeiropoulos, 2025-04-29): Not from the user
 
         self.only_module_related = True
-        self.perce_save = 10
-        self.scores_outfile = os.path.join(self.outdir, "phylomint_scores.tsv")
+        self.perce_save          = 10
+        self.scores_outfile      = os.path.join(self.outdir, "phylomint_scores.tsv")
 
         # NOTE (Haris Zafeiropoulos, 2025-04-29): Already provided
         if self.skip_sets:
 
             if config.onthefly:
                 logger.info("Load conf and non seed sets for running on the fly.")
-                self.ConfidenceDic = load_confidence(self.prev_conf)
-                self.nonSeedSetDic = load_nonseeds(self.prev_nonseeds)
+                self.ConfidenceDic = load_confidence(self.prev_conf, remove_suffix=False)
+                self.nonSeedSetDic = load_nonseeds(self.prev_nonseeds, remove_suffix=False)
 
             else:
 
@@ -146,7 +152,7 @@ class ExportSeedComplementarities:
         ConfidenceDic = dict()
 
         # Get all XML files in directory
-        logger.info("Export seed and non seed sets....")
+        logger.info("Export seed and non seed sets.")
 
         sbml_files = [
             os.path.join(self.dir_path, f)
@@ -204,13 +210,14 @@ class ExportSeedComplementarities:
 
     def get_scores_and_compls(self):
         """
-        Based on the seed and non-seed sets calculated, get all pairwise competition and cooperation scores and the seed complementarities
-        between the modles under study.
+        Based on the seed and non-seed sets calculated, get all pairwise competition and cooperation scores 
+        and the seed complementarities between the models under study.
         """
+
         logger.info("Exporting seed scores and complementarities.")
 
-        if self.api:
-            self.patric_ids_of_interest = self.patric_ids
+        if self.api or self.onthefly:
+            self.patric_ids_of_interest = [str(q) for q in list(self.gc_to_patric_ids.values())]
         else:
             self.patric_ids_of_interest = self.ConfidenceDic.keys()
 
@@ -218,16 +225,15 @@ class ExportSeedComplementarities:
         seed_complements = {}
 
         for species in self.patric_ids_of_interest:
-            if self.api:
 
-                logger.info("in the api loop, species:")
-                logger.info(species)
+            if self.api:
 
                 scores, compls = self.species_scores_compls(species)
 
                 seed_scores.append(scores)
 
             else:
+
                 # Score are written in a file
                 compls = self.species_scores_compls(species)
 
@@ -236,11 +242,14 @@ class ExportSeedComplementarities:
         seed_scores = [s for s in seed_scores if s is not None]
 
         # Finalize shared dictionary and convert to DataFrame
-        final_compls_dict = {
-            k: dict(v) for k, v in (seed_complements or {}).items() if v is not None
+        # compls_dict = {
+        #     k: dict(v) for k, v in (seed_complements or {}).items() if v is not None
+        # }
+        compls_dict = {
+            k: v for k, v in (seed_complements or {}).items() if isinstance(v, dict)
         }
 
-        df = pd.DataFrame.from_dict(final_compls_dict)
+        df = pd.DataFrame.from_dict(compls_dict)
 
         # Identify only the float columns
         float_cols = df.select_dtypes(include="float").columns
@@ -250,11 +259,6 @@ class ExportSeedComplementarities:
 
         # Save the final DataFrame
         if self.api:
-
-            logger.info(">>>>>>>>>>>>>>")
-            logger.info(seed_scores)
-            logger.info(final_compls_dict)
-            logger.info("<<<<<<<<<<<<<<<")
 
             # if self.get_scores:
             seed_scores = [list(entry)[0].strip().split("\t") for entry in seed_scores]
@@ -268,10 +272,10 @@ class ExportSeedComplementarities:
                 ],
             )
 
-            return seed_scores_df, final_compls_dict
+            return seed_scores_df, compls_dict
 
         else:
-            with open(self.seed_complements, "wb") as f:
+            with open(self.seed_compls_pckl, "wb") as f:
                 pickle.dump(df, f)
 
     def species_scores_compls(self, species):
@@ -294,6 +298,7 @@ class ExportSeedComplementarities:
         # Get beneficiary's seed set
         species_seedset_confidence = self.ConfidenceDic.get(species)
         if species_seedset_confidence is None:
+            # TODO (Haris Zafeiropoulos, 2025-05-08): onthefly cases where a patric id is only good as up to the dot.
             return None, None
 
         # Get seed set of the other species
@@ -301,7 +306,9 @@ class ExportSeedComplementarities:
             if (conf := self.ConfidenceDic.get(partner)) is not None and (
                 non_seed := self.nonSeedSetDic.get(partner)
             ) is not None:
+
                 partner_seedset_confidence, nonSeedB = conf, non_seed
+
             else:
                 continue
 
@@ -332,14 +339,8 @@ class ExportSeedComplementarities:
                     B_complememts_to_A = kegg_module_related_intersect(
                         B_complememts_to_A, self.modelseed_compounds_of_interest
                     )
-                compls[partner] = B_complememts_to_A
 
-        # logger.info("************************")
-        # logger.info("scores")
-        # logger.info(scores)
-        # logger.info("compls")
-        # logger.info(compls)
-        # logger.info("************************")
+                compls[partner] = B_complememts_to_A
 
         if self.api:
             return scores, compls
@@ -430,7 +431,9 @@ class ExportSeedComplementarities:
         return dict_serial
 
     def _dict_to_pickle(self, dict, pickle_file):
-
+        """
+        Saves a dictionary as a pickle file after filtering for KEGG MODULE related cases.
+        """
         dict_tmp = {}
         for k, v in dict.items():
             dict_tmp[k] = [
@@ -622,19 +625,19 @@ def build_url_with_seed_complements(seed_complements, nonseeds, kmap, shortener=
     return url
 
 
-# On the fly related
-import gzip
-
-
-def load_confidence(confidence):
+def load_confidence(confidence, remove_suffix=False):
     # confidence: all_conf.json.gz
     with gzip.open(confidence, "rt", encoding="utf-8") as f:
         seeds = json.load(f)
+    if remove_suffix:
+        seeds = {k.split(".")[0]: v for k, v in seeds.items()}
     return seeds
 
 
-def load_nonseeds(nonseeds):
+def load_nonseeds(nonseeds, remove_suffix=False):
     # nonseeds: all_nonseeds.json.gz
     with gzip.open(nonseeds, "rt", encoding="utf-8") as f:
         nonseeds = json.load(f)
+    if remove_suffix:
+        nonseeds = {k.split(".")[0]: v for k, v in nonseeds.items()}
     return nonseeds

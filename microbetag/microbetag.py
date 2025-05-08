@@ -40,17 +40,124 @@ from .tools import (
 )
 from .db import (
     get_phen_traits,
-    get_path_compls_otf
-    # something for path compls
+    get_path_compls_otf,                 # otf
+    get_patric_id_of_gc_accession_list   # otf
 )
 from .config import Config
 from .genres import GEMSReconstruction
 from .helpers import manta_input_net
+from .taxonomy import otf_seqid_ncbi_gtdb__map
 from .build_mtg_cx2 import mtg_annotate_network
 from .pathway_complementarity import export_pathway_complementarities
 
 
 logger = mtg_logger(__name__)
+
+
+def _run_orf_prodigal(config):
+    """
+    Wrappper function for running Prodigal 
+    """
+
+    if config.bin_filenames is None:
+        logger.error(
+            "Bins files have not been provided and they are required for the precalculation steps of microbetag."
+            "Provide the path to the directory with your bins/MAGs under the bins_fasta parameter of the config.yml file."
+        )
+
+    for bin_fa in config.bin_filenames:
+
+        bin_filename = os.path.basename(bin_fa)
+
+        bin_id, _ = os.path.splitext(bin_filename)
+        bin_id = bin_id.split("/")[-1]
+
+        bin_fa = os.path.join(config.bins_path, bin_fa)
+
+        logger.info(f"Running Prodigal for {bin_id}")
+        # TODO: check if bin_id is actually only the basename of the whole path until extension
+
+        run_prodigal(bin_fa, bin_id, config.prodigal)
+
+
+def _run_kegg_annotate(config):
+    """
+    Wrapper for the tools.kegg_annotation() for each genome/MAG and the utils.merge_ko()
+    """
+    ko_list = os.path.join(config.kegg_db_dir, "ko_list")
+    ko_dic = ko_list_parser(ko_list)
+
+    hmmout_dir = config.kegg_pieces_dir
+    config.ko_merged = os.path.join(config.kegg_annotations, "ko_merged.txt")
+
+    for bn in config.bin_filenames:
+        bin_id, _   = os.path.splitext(bn)
+        bin_kos_dir = os.path.join(hmmout_dir, bin_id)
+        os.makedirs(bin_kos_dir, exist_ok=True)
+
+        for afile in os.listdir(bin_kos_dir):
+            if afile.endswith(".hmmout.all"):
+                continue
+
+        for bn in config.bin_filenames:
+
+            faa = os.path.join(config.prodigal, bin_id + ".faa")
+
+            # A folder with KO predictions (a single hmmout file for each KO) per bin
+            check = kegg_annotation(
+                faa, bin_id, config.kegg_pieces_dir, config.kegg_db_dir, ko_dic, config.threads,
+            )
+
+            # Out of the 24K hmmout files, make a single one with the predictions as backup and one with the 3-columns
+            if check:
+                bin_kos_to_file(hmmout_dir=bin_kos_dir, bin_id=bin_id)
+
+    # Make the 3-columns files with all bins and their KOs
+    merge_ko(config.kegg_pieces_dir, config.ko_merged)
+
+
+def _build_genres(config):
+    """
+    Wrapper function for GENREs in a microbetag pipeline run.
+    """
+    # Init reconstruction class
+    build_genres = GEMSReconstruction(config)
+
+    # Annotate step
+    if config.input_for_recon_type == "bins_fasta":
+
+        if config.genre_reconstruction_with == "modelseedpy":
+            build_genres.rast_annotate_genomes()  # saves under config.reconstructions
+
+        elif config.gene_predictor == "prodigal":
+            logger.info(
+                "DiTing .faa files will be used"
+            )  # go to the .faa case, i.e., the ORFs/
+
+        elif config.gene_predictor == "fragGeneScan":
+            logger.info("Get annotations with FragGeneScan.")
+            build_genres.fgs_annotate_genomes()  # saves under config.reconstructions
+
+    elif config.input_for_recon_type == "coding_regions":
+        logger.info("CarveMe will be used with the users .ffn-like files.")
+
+    else:
+        logger.warning(
+            f"The combination of gene_predictor: {config.gene_predictor} \
+            \nand genre_reconstruction_with: {config.genre_reconstruction_with}, are not supported"
+        )
+
+    # Reconstruct step
+    if config.genre_reconstruction_with == "modelseedpy":
+        logger.info("Build draft reconstructions with ModelSEEDpy")
+        build_genres.modelseed_reconstructions()
+
+    elif config.genre_reconstruction_with == "carveme":
+        logger.info("Build draft reconstructions with carveme")
+        build_genres.carve_reconstructions()
+
+    else:
+        logger.info("User models to be used for the seed complementarity step.")
 
 
 def run_microbetag(config):
@@ -64,17 +171,21 @@ def run_microbetag(config):
             "No network will be built."
         )
     elif not os.path.exists(config.network) or os.path.getsize(config.network) == 0:
+
         logger.info(
             "[STEP] NETWORK INFERENCE WITH FLASHWEAVE. "
             "Using the abundance table provided, microbetag is about to build a co-occurrence network.\n"
         )
+
         run_flashweave(config)
 
     # ----------------
     # FAPROTAX
     # ----------------
     if config.abundance_table is not None and config.faprotax:
+
         logger.info("[STEP] LITERATURE ANNOTATION WITH FAPROTAX")
+
         run_faprotax(config)
 
     # ----------------
@@ -98,33 +209,20 @@ def run_microbetag(config):
     # ----------------
     if (
         config.pathway_complementarity or config.seed_complementarity
-    ) and config.ko_merged is None and not config.onthefly:
-        if len(os.listdir(config.prodigal)) != len(config.bins_ids):
+    ) and not config.onthefly:
 
-            logger.info("[STEP] :: PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
+        if config.ko_merged is None and len(os.listdir(config.prodigal)) != len(config.bins_ids):
 
-            if config.bin_filenames is None:
-                logger.error(
-                    "Bins files have not been provided and they are required for the precalculation steps of microbetag."
-                    "Provide the path to the directory with your bins/MAGs under the bins_fasta parameter of the config.yml file."
-                )
+            logger.info("[INTERMEDIATE STEP] PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
 
-            for bin_fa in config.bin_filenames:
+            _run_orf_prodigal(config)
 
-                bin_filename = os.path.basename(bin_fa)
+    # ----------------
+    # Maps required for otf in case of complementaritites
+    # ----------------
+    if (config.pathway_complementarity or config.seed_complementarity) and config.onthefly:
 
-                bin_id, _ = os.path.splitext(bin_filename)
-                bin_id = bin_id.split("/")[-1]
-
-                bin_fa = os.path.join(config.bins_path, bin_fa)
-
-                logger.info(f"Running Prodigal for {bin_id}")
-
-                print(
-                    bin_fa, bin_id, config.prodigal
-                )  # TODO: check if bin_id is actually only the basename of the whole path until extension
-
-                run_prodigal(bin_fa, bin_id, config.prodigal)
+        config.pairs_of_interest, config.relative_genomes, config.mspecies_map_df = otf_seqid_ncbi_gtdb__map(config)
 
     # ----------------
     # Pathway complementarity
@@ -139,45 +237,13 @@ def run_microbetag(config):
 
         if config.ko_merged is None and not config.onthefly:
 
-            logger.info("[STEP ] KEGG ANNOTATION OF THE ORFs \n")
+            logger.info("[INTERMEDIATE STEP] KEGG ANNOTATION OF THE ORFs \n")
 
-            ko_list = os.path.join(config.kegg_db_dir, "ko_list")
-            ko_dic = ko_list_parser(ko_list)
-
-            hmmout_dir = config.kegg_pieces_dir
-            config.ko_merged = os.path.join(config.kegg_annotations, "ko_merged.txt")
-
-            for bn in config.bin_filenames:
-                bin_id, _ = os.path.splitext(bn)
-                bin_kos_dir = os.path.join(hmmout_dir, bin_id)
-                os.makedirs(bin_kos_dir, exist_ok=True)
-
-                for afile in os.listdir(bin_kos_dir):
-                    if afile.endswith(".hmmout.all"):
-                        continue
-
-                for bn in config.bin_filenames:
-                    faa = os.path.join(config.prodigal, bin_id + ".faa")
-                    # A folder with KO predictions (a single hmmout file for each KO) per bin
-                    check = kegg_annotation(
-                        faa,
-                        bin_id,
-                        config.kegg_pieces_dir,
-                        config.kegg_db_dir,
-                        ko_dic,
-                        config.threads,
-                    )
-                    # Out of the 24K hmmout files, make a single one with the predictions as backup and one with the 3-columns
-                    if check:
-                        bin_kos_to_file(hmmout_dir=bin_kos_dir, bin_id=bin_id)
-
-            # Make the 3-columns files with all bins and their KOs
-            merge_ko(config.kegg_pieces_dir, config.ko_merged)
+            _run_kegg_annotate(config)
 
         elif not config.onthefly:
 
             logger.info("A 3-col KEGG annotation file already available.")
-            print("A 3-col KEGG annotation file already available.")
 
         # ----------------
         # Extract pathway complementarities
@@ -185,7 +251,7 @@ def run_microbetag(config):
 
         if config.onthefly:
 
-            config.mspecies_map_df = get_path_compls_otf(config)
+            get_path_compls_otf(config)
 
         else:
 
@@ -195,8 +261,6 @@ def run_microbetag(config):
                 config.compl_file
             ):
 
-                print(pivot_df)
-                # bin_kos_per_module, alt_to_gapfill, complements =
                 _, _ = export_pathway_complementarities(config, pivot_df)
 
     # ----------------
@@ -204,60 +268,30 @@ def run_microbetag(config):
     # ----------------
     if config.seed_complementarity:
 
-        # In case of seed complementarity:
-        # 1. we need to make sure we have GEMs, then
-        # 2. we need to extract the seed and non-seed sets and their compls
+        logger.info("[STEP] EXTRACTING SEED COMPLEMENTARITIES.")
 
         # ----------------
         # Build GENREs
         # ----------------
-        if not config.users_models:
+        if not config.onthefly and not config.users_models:
 
-            logger.info("[STEP] GENOME-SCALE METABOLIC NETWORK RECONSTRUCTIONS")
+            logger.info("[INTERMEDIATE STEP] GENOME-SCALE METABOLIC NETWORK RECONSTRUCTIONS")
 
-            # Init reconstruction class
-            build_genres = GEMSReconstruction(config)
-
-            # Annotate step
-            if config.input_for_recon_type == "bins_fasta":
-
-                if config.genre_reconstruction_with == "modelseedpy":
-                    build_genres.rast_annotate_genomes()  # saves under config.reconstructions
-
-                elif config.gene_predictor == "prodigal":
-                    logger.info(
-                        "DiTing .faa files will be used"
-                    )  # go to the .faa case, i.e., the ORFs/
-
-                elif config.gene_predictor == "fragGeneScan":
-                    logger.info("Get annotations with FragGeneScan.")
-                    build_genres.fgs_annotate_genomes()  # saves under config.reconstructions
-
-            elif config.input_for_recon_type == "coding_regions":
-                logger.info("CarveMe will be used with the users .ffn-like files.")
-
-            else:
-                logger.warning(
-                    f"The combination of gene_predictor: {config.gene_predictor} \
-                    \nand genre_reconstruction_with: {config.genre_reconstruction_with}, are not supported"
-                )
-
-            # Reconstruct step
-            if config.genre_reconstruction_with == "modelseedpy":
-                logger.info("Build draft reconstructions with ModelSEEDpy")
-                build_genres.modelseed_reconstructions()
-
-            elif config.genre_reconstruction_with == "carveme":
-                logger.info("Build draft reconstructions with carveme")
-                build_genres.carve_reconstructions()
-
-            else:
-                logger.info("User models to be used for the seed complementarity step.")
+            _build_genres(config)
 
         # ----------------
         # microbetag implementation of Phylomint
         # ----------------
-        logger.info("[STEP] COMPUTING SEED SETS AND SCORES")
+        logger.info("[INTERMEDIATE STEP] COMPUTING SEED SETS AND SCORES")
+
+        if config.onthefly:
+
+            config.get_scores      = True
+            config.get_complements = True
+            # gtdb_to_patric_dict = get_patric_id_of_gc_accession_list(config.repr_genomes_present)
+            # config.gc_to_patric_ids   = [str(q) for q in list(gtdb_to_patric_dict.values())]
+            config.gc_to_patric_ids = get_patric_id_of_gc_accession_list(config.repr_genomes_present)
+
         run_seed_complementarity(config)
 
     # ----------------
@@ -265,9 +299,8 @@ def run_microbetag(config):
     # ----------------
     if config.net_cluster and config.prev_manta_net is None:
 
-        logger.info(
-            """[STEP]: network clustering using manta and the abundance table"""
-        )
+        logger.info("[STEP] network clustering using manta and the abundance table")
+
         # Build original input file in cyjs format
         manta_input_net(config)
 
@@ -275,6 +308,7 @@ def run_microbetag(config):
             "Base network has been built and saved."
             "manta is now clustering your network..."
         )
+
         # Run manta on the cyjs network
         run_manta(config)
 
