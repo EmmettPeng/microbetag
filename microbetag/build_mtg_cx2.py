@@ -314,22 +314,15 @@ def _get_edge_id(beneficiary, donor, node_names, edges, interaction_type):
     Remember! Source and target are always the sequence identifiers.
     """
     target, source = node_names.index(beneficiary), node_names.index(donor)
-    edge = next(
-        (
-            e
-            for e in edges
-            if e["s"] == source
-            and e["t"] == target
-            and e["v"]["interaction type"] == interaction_type
-        ),
-        None,
-    )
-    return (edges.index(edge), True) if edge is not None else (len(edges) + 1, False)
+    for idx, e in enumerate(edges):
+        if e["s"] == source and e["t"] == target and e["v"]["interaction type"] == interaction_type:
+            return idx, True
+    return -1, False
 
 
 def _update_or_append(lst, index, item, update):
     if update:
-        lst[index] = item
+        lst[index]['v'].update(item['v'])  # 👈 preserves other parts of edge
     else:
         lst.append(item)
 
@@ -518,27 +511,32 @@ def seed_complement_edge(
     if update:
         edge = cx_edges[edge_id]
     else:
-        interacting = "".join(["(", COMPLEMENTING, ")"])
-
         edge = {
-            "id": edge_id,
+            "id": len(cx_edges),  # Always new
             "s": node_names.index(donor),
             "t": node_names.index(beneficiary),
             "v": {
                 "interaction type": COMPLEMENTARITY_TYPE,
-                "shared name": f"{beneficiary} {interacting} {donor}",
+                "shared name": f"{beneficiary} {COMPLEMENTING} {donor}",
             },
         }
 
     # Edge attributes
-    column = f"seedCompl::{beneficiary_patric}:{donor_patric}"
-    edge["v"].update(
-        {
-            column: complement,
-            "seed::competition": competition,
-            "seed::cooperation": cooperation,
-        }
-    )
+    complement_column  = f"seedCompl::{beneficiary_patric}:{donor_patric}"
+    competition_column = "seed::competition"
+    cooperation_column = "seed::cooperation"
+    # competition_column = f"seed::competition::{beneficiary_patric}:{donor_patric}"
+    # cooperation_column = f"seed::cooperation::{beneficiary_patric}:{donor_patric}"
+
+    update_dict = {
+        k: v for k, v in {
+            complement_column: complement,
+            competition_column: competition,
+            cooperation_column: cooperation,
+        }.items() if v is not None
+    }
+
+    edge["v"].update(update_dict)
 
     return edge
 
@@ -585,13 +583,10 @@ def seed_complements(config, edgelist_df, node_names, cx_edges):
     #
     if config.onthefly:
 
-        # # Remove suffixes in the non_seed_sets, i.e after (".")
-        # non_seed_sets.index = non_seed_sets.index.astype(str).str.split('.').str[0]
-        #
+        # Get dictionary with sequence identifiers to their mapped GTDB genomes
         seqids_to_gc = _seqids_to_gcs(config.mspecies_map_df)
-        logger.info("seqids_to_gc se leo")
-        logger.info(seqids_to_gc)
 
+        # Get dictionary with sequence identifiers to their corresponding PATRIC ids
         node_to_patric = {
             node: list({
                 str(config.gc_to_patric_ids.get(gtdb))
@@ -601,6 +596,7 @@ def seed_complements(config, edgelist_df, node_names, cx_edges):
             for node, gtdbs in seqids_to_gc.items()
         }
 
+        # Keep a set with sequence identifiers that do have a PATRIC id
         nodes_in_compls = set(x for x in node_to_patric.keys())
 
     #
@@ -624,7 +620,16 @@ def seed_complements(config, edgelist_df, node_names, cx_edges):
                         beneficiary, donor, node_names, cx_edges, COMPLEMENTARITY_TYPE
                     )
 
+                    if beneficiary == 'ASV0445' or donor == 'ASV0445':
+                        logger.info("++++++++++++++")
+                        logger.info(edge_id)
+                        logger.info(update)
+                        logger.info(len(cx_edges))
+                        logger.info("++++++++++++++")
+
+                    # From the seed_scores data frame, get those for the case under study
                     scores = seed_scores.query("A == @ben_genome and B == @don_genome")
+
                     if not scores.empty:
                         competAB, cooperAB = scores.iloc[0][
                             ["Competition", "Complementarity"]
@@ -659,7 +664,7 @@ def seed_complements(config, edgelist_df, node_names, cx_edges):
                         cx_edges=cx_edges,
                     )
 
-                _update_or_append(cx_edges, edge_id, se, update)
+                    _update_or_append(cx_edges, edge_id, se, update)
 
 
 # -----------------------------

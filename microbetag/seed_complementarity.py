@@ -57,97 +57,153 @@ class ExportSeedComplementarities:
 
         logger.info("Initiating Export Seed Complementarities class with params.")
 
-        self.api      = config.api if hasattr(config, 'api') else False
-        self.onthefly = config.onthefly if hasattr(config, 'onthefly') else False
+        self.api = getattr(config, 'api', False)
+        self.onthefly = getattr(config, 'onthefly', False)
 
-        self.outdir   = config.seeds
-        self.threads  = config.threads
+        self.outdir           = config.seeds
+        self.threads          = config.threads
+        self.skip_sets        = config.skip_sets
+        self.prev_conf        = config.prev_conf
+        self.prev_nonseeds    = config.prev_nonseeds
+        self.seed_compls_pckl = getattr(config, 'seed_complements', None)
+        self.scores_outfile   = os.path.join(self.outdir, "phylomint_scores.tsv")
 
-        self.skip_sets     = config.skip_sets
-        self.prev_conf     = config.prev_conf
-        self.prev_nonseeds = config.prev_nonseeds
-
-        self.modelseed_compounds_of_interest = get_kegg_module_related(
-            config.seed_ko_mo
-        )
+        self.modelseed_compounds_of_interest = get_kegg_module_related(config.seed_ko_mo)
+        self.only_module_related = True
+        self.perce_save          = 10
 
         if self.api or self.onthefly:
-
-            self.gc_to_patric_ids      = config.gc_to_patric_ids
-            self.get_complements = True
-            self.get_scores      = config.get_scores
-            self.get_complements = config.get_complements
-
+            self.gc_to_patric_ids = config.gc_to_patric_ids
+            self.get_complements  = getattr(config, 'get_complements', True)
+            self.get_scores       = getattr(config, 'get_scores', True)
         else:
+            self.dir_path        = config.genres
+            self.get_scores      = not os.path.exists(self.scores_outfile)
+            self.get_complements = not os.path.exists(self.seed_compls_pckl)
+            self.namespace       = "modelseed"
 
-            self.dir_path       = config.genres
-            self.save_dics      = True
-            self.get_scores     = not os.path.exists(self.scores_outfile)
-
-            self.get_complements     = not os.path.exists(self.seed_compls_pckl)
-
-            # Prefixes - suffixes
-            self.compound_prefix = "M"
-            self.ex_suffix       = "e" if self.namespace == "BiGG" else "e0"
-            self.int_suffix      = "c" if self.namespace == "BiGG" else "c0"
-
-            self.namespace = "modelseed"
-            if config.genre_reconstruction_with == "carveme":
-
-                logger.info("Load bigg2seed map...")
+            if getattr(config, 'genre_reconstruction_with', None) == "carveme":
                 self.namespace = "BiGG"
                 self.bigg2seed = bigg_to_seed_mapping_df(config.metanetx_compounds)
 
-            self.module_seeds     = config.module_seeds      # kegg_module_related_seeds.pckl
-            self.module_nonseeds  = config.module_nonseeds   # kegg_module_related_nonseeds.pckl
+            self.compound_prefix = "M"
+            self.ex_suffix  = "e" if self.namespace == "BiGG" else "e0"
+            self.int_suffix = "c" if self.namespace == "BiGG" else "c0"
+            self.module_seeds    = config.module_seeds
+            self.module_nonseeds = config.module_nonseeds
 
-            self.get_scores      = not os.path.exists(self.scores_outfile)
-            self.get_complements = not os.path.exists(self.seed_compls_pckl)
-
-        if not self.api:
-            self.seed_compls_pckl    = config.seed_complements  # seed_complements.pckl
-
-        # NOTE (Haris Zafeiropoulos, 2025-04-29): Not from the user
-
-        self.only_module_related = True
-        self.perce_save          = 10
-        self.scores_outfile      = os.path.join(self.outdir, "phylomint_scores.tsv")
-
-        # NOTE (Haris Zafeiropoulos, 2025-04-29): Already provided
         if self.skip_sets:
+            logger.info("Load conf and non seed sets for running on the fly." if self.onthefly
+                        else "Load previously computed confidence scores and non-seed sets..")
 
-            if config.onthefly:
-                logger.info("Load conf and non seed sets for running on the fly.")
+            if self.onthefly:
                 self.ConfidenceDic = load_confidence(self.prev_conf, remove_suffix=False)
                 self.nonSeedSetDic = load_nonseeds(self.prev_nonseeds, remove_suffix=False)
-
             else:
-
-                logger.info("Load previously computed confidence scores and non-seed sets..")
-
                 try:
                     with open(self.prev_conf, "r") as f:
-                        ConfidenceDic = json.load(f)
-                except FileExistsError as e:
-                    raise e
-                try:
+                        raw_conf = json.load(f)
                     with open(self.prev_nonseeds, "r") as f:
-                        nonSeedSetDic = json.load(f)
+                        raw_nonseeds = json.load(f)
                 except FileExistsError as e:
                     raise e
 
-                self.ConfidenceDic, self.nonSeedSetDic = {}, {}
-                for k, v in ConfidenceDic.items():
-                    self.ConfidenceDic[k] = self._strip_pre_suff_from_dict(v)
-                for k, v in nonSeedSetDic.items():
-                    self.nonSeedSetDic[k] = self._strip_pre_suff_from_list(v)
+                self.ConfidenceDic = {k: self._strip_pre_suff_from_dict(v) for k, v in raw_conf.items()}
+                self.nonSeedSetDic = {k: self._strip_pre_suff_from_list(v) for k, v in raw_nonseeds.items()}
+# ==================
+        # logger.info("Initiating Export Seed Complementarities class with params.")
+
+        # self.api      = config.api if hasattr(config, 'api') else False
+        # self.onthefly = config.onthefly if hasattr(config, 'onthefly') else False
+
+        # self.outdir   = config.seeds
+        # self.threads  = config.threads
+
+        # self.skip_sets     = config.skip_sets
+        # self.prev_conf     = config.prev_conf
+        # self.prev_nonseeds = config.prev_nonseeds
+
+        # self.modelseed_compounds_of_interest = get_kegg_module_related(
+        #     config.seed_ko_mo
+        # )
+
+        # if self.api or self.onthefly:
+
+        #     self.gc_to_patric_ids      = config.gc_to_patric_ids
+        #     self.get_complements = True
+        #     self.get_scores      = config.get_scores
+        #     self.get_complements = config.get_complements
+
+        # else:
+
+        #     self.dir_path       = config.genres
+        #     self.save_dics      = True
+        #     self.get_scores     = not os.path.exists(self.scores_outfile)
+
+        #     self.get_complements     = not os.path.exists(self.seed_compls_pckl)
+
+        #     # Prefixes - suffixes
+        #     self.compound_prefix = "M"
+        #     self.ex_suffix       = "e" if self.namespace == "BiGG" else "e0"
+        #     self.int_suffix      = "c" if self.namespace == "BiGG" else "c0"
+
+        #     self.namespace = "modelseed"
+        #     if config.genre_reconstruction_with == "carveme":
+
+        #         logger.info("Load bigg2seed map...")
+        #         self.namespace = "BiGG"
+        #         self.bigg2seed = bigg_to_seed_mapping_df(config.metanetx_compounds)
+
+        #     self.module_seeds     = config.module_seeds      # kegg_module_related_seeds.pckl
+        #     self.module_nonseeds  = config.module_nonseeds   # kegg_module_related_nonseeds.pckl
+
+        #     self.get_scores      = not os.path.exists(self.scores_outfile)
+        #     self.get_complements = not os.path.exists(self.seed_compls_pckl)
+
+        # if not self.api:
+        #     self.seed_compls_pckl    = config.seed_complements  # seed_complements.pckl
+
+        # # NOTE (Haris Zafeiropoulos, 2025-04-29): Not from the user
+
+        # self.only_module_related = True
+        # self.perce_save          = 10
+        # self.scores_outfile      = os.path.join(self.outdir, "phylomint_scores.tsv")
+
+        # # NOTE (Haris Zafeiropoulos, 2025-04-29): Already provided
+        # if self.skip_sets:
+
+        #     if config.onthefly:
+        #         logger.info("Load conf and non seed sets for running on the fly.")
+        #         self.ConfidenceDic = load_confidence(self.prev_conf, remove_suffix=False)
+        #         self.nonSeedSetDic = load_nonseeds(self.prev_nonseeds, remove_suffix=False)
+
+        #     else:
+
+        #         logger.info("Load previously computed confidence scores and non-seed sets..")
+
+        #         try:
+        #             with open(self.prev_conf, "r") as f:
+        #                 ConfidenceDic = json.load(f)
+        #         except FileExistsError as e:
+        #             raise e
+        #         try:
+        #             with open(self.prev_nonseeds, "r") as f:
+        #                 nonSeedSetDic = json.load(f)
+        #         except FileExistsError as e:
+        #             raise e
+
+        #         self.ConfidenceDic, self.nonSeedSetDic = {}, {}
+        #         for k, v in ConfidenceDic.items():
+        #             self.ConfidenceDic[k] = self._strip_pre_suff_from_dict(v)
+        #         for k, v in nonSeedSetDic.items():
+        #             self.nonSeedSetDic[k] = self._strip_pre_suff_from_list(v)
 
     def get_sets(self):
         """
         Get seed and non-seed sets for each model
         """
         # Build initial dictionaries
-        SeedSetDic = dict()
+        SeedSetDic    = dict()
         nonSeedSetDic = dict()
         ConfidenceDic = dict()
 
@@ -178,7 +234,8 @@ class ExportSeedComplementarities:
                 pass
 
             tmp = {key: None for key in SeedSet}
-            SeedSetDic[sbml_base] = tmp.keys()
+
+            SeedSetDic[sbml_base]    = tmp.keys()
             nonSeedSetDic[sbml_base] = nonSeedSet
             ConfidenceDic[sbml_base] = SeedSetConfidence
 
@@ -242,9 +299,6 @@ class ExportSeedComplementarities:
         seed_scores = [s for s in seed_scores if s is not None]
 
         # Finalize shared dictionary and convert to DataFrame
-        # compls_dict = {
-        #     k: dict(v) for k, v in (seed_complements or {}).items() if v is not None
-        # }
         compls_dict = {
             k: v for k, v in (seed_complements or {}).items() if isinstance(v, dict)
         }
@@ -290,16 +344,16 @@ class ExportSeedComplementarities:
         # Init compls and scores
         scores, compls = set(), {}
 
+        # Get beneficiary's seed set
+        species_seedset_confidence = self.ConfidenceDic.get(species)
+
+        if species_seedset_confidence is None:
+            return None, None
+
         # Get pairwise
         as_beneficiary, _ = _generate_fixed_pairwise_comparisons(
             species, list(self.patric_ids_of_interest)
         )
-
-        # Get beneficiary's seed set
-        species_seedset_confidence = self.ConfidenceDic.get(species)
-        if species_seedset_confidence is None:
-            # TODO (Haris Zafeiropoulos, 2025-05-08): onthefly cases where a patric id is only good as up to the dot.
-            return None, None
 
         # Get seed set of the other species
         for partner in [pair[1] for pair in as_beneficiary if pair[1] != species]:
