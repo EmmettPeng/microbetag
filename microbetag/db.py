@@ -1,13 +1,15 @@
 import os
-import ast
 import json
+import pickle
+import random
 import pandas as pd
 import mysql.connector
 from mysql.connector import pooling
-from typing import Dict, Set, Tuple, Any
-
+from typing import Dict, Set, Tuple
+from collections import defaultdict
+from .seed_complementarity import load_confidence
 from .utils import mtg_logger, convert_to_json_serializable
-from .networks import get_edgelist
+
 
 logger = mtg_logger(__file__)
 _KEGG_MAPPINGS = os.path.join(
@@ -133,9 +135,46 @@ def get_patric_id_of_gc_accession_list(gc_accession_list=["GCA_003184265.1"]):
             # Yet, keeping the part before the dot (.) - using int(patricId[0][0]) cannot be a solution since in many cases
             # we have several strains for the same species, meaning, several after the dot parts.
             gc_to_patric_dict[gc] = patricId[0][0] if patricId and patricId[0] else None
+
     logger.info(gc_to_patric_dict)
+
     return gc_to_patric_dict
 
+
+def update_for_patric(config, gc_to_patric):
+    """
+    Arguments:
+        confg: microbetag configuration for the onthefly version 
+        gc_to_patric: a dictionary with GTDB representative genomes as key and their corresponding PATRIC id as value.
+    """
+
+    with open(config.module_nonseeds, "rb") as f:
+        nonseeds = pickle.load(f)
+
+    # Group patric IDs by prefix (before dot)
+    pre_to_compl = defaultdict(list)
+    for patric_id in nonseeds.index:
+        prefix = patric_id.split(".")[0]
+        pre_to_compl[prefix].append(patric_id)
+
+    updated_gc_to_patric = {}
+
+    for gtdb, patric in gc_to_patric.items():
+        patric = str(patric)
+        if patric in nonseeds.index:
+            updated_gc_to_patric[gtdb] = patric
+        else:
+            trunc_patric = patric.split(".")[0]
+            candidates = pre_to_compl.get(trunc_patric, [])
+            if len(candidates) >= 5:
+                continue  # Optional: skip if too many candidates?
+            if candidates:
+                updated_gc_to_patric[gtdb] = random.choice(candidates)
+            else:
+                # Optional: log or handle the case where no candidates are found
+                continue
+
+    return updated_gc_to_patric
 
 # --------
 # Phen related

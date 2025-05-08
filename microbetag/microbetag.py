@@ -40,8 +40,9 @@ from .tools import (
 )
 from .db import (
     get_phen_traits,
-    get_path_compls_otf,                 # otf
-    get_patric_id_of_gc_accession_list   # otf
+    get_path_compls_otf,                  # otf
+    get_patric_id_of_gc_accession_list,   # otf
+    update_for_patric
 )
 from .config import Config
 from .genres import GEMSReconstruction
@@ -288,9 +289,10 @@ def run_microbetag(config):
 
             config.get_scores      = True
             config.get_complements = True
-            # gtdb_to_patric_dict = get_patric_id_of_gc_accession_list(config.repr_genomes_present)
-            # config.gc_to_patric_ids   = [str(q) for q in list(gtdb_to_patric_dict.values())]
-            config.gc_to_patric_ids = get_patric_id_of_gc_accession_list(config.repr_genomes_present)
+
+            # Get dictionary with GTDB accession ids to their correspoding PATRIC
+            gc_to_patric_ids        = get_patric_id_of_gc_accession_list(config.repr_genomes_present)
+            config.gc_to_patric_ids = update_for_patric(config, gc_to_patric_ids)
 
         run_seed_complementarity(config)
 
