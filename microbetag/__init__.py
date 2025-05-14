@@ -41,16 +41,3 @@ from .db import (
     get_phen_traits,
     get_path_compls_for_ncbi_ids
 )
-
-# from .PhyloMint.PhyloMInt import PhylomintMGT
-
-import os
-
-_KEGG_MAPPINGS = os.path.join(
-    os.path.dirname(__file__), "mtg_maps_models", "kegg_mappings"
-)
-KEGG_TERMS_PER_MODULE = os.path.join(_KEGG_MAPPINGS, "kegg_terms_per_module.tsv")
-MODULE_DEFINITION_MAP = os.path.join(_KEGG_MAPPINGS, "module_definition_map.json")
-
-# e.g cpd00020	C00022	M00001
-KEGG_MODULES_TO_MAPS = os.path.join(_KEGG_MAPPINGS, "module_map_pairs.tsv")

@@ -12,7 +12,7 @@ Output:
     - An annotated network in .cx2 format
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "Haris Zafeiropoulos <haris.zafeiropoulos@kuleuven.be>"
 
 import os
@@ -46,24 +46,24 @@ from .db import (
 )
 from .config import Config
 from .genres import GEMSReconstruction
-from .helpers import manta_input_net
-from .taxonomy import otf_seqid_ncbi_gtdb__map
 from .build_mtg_cx2 import mtg_annotate_network
+from .helpers import otf_seqid_ncbi_gtdb_map, manta_input_net
 from .pathway_complementarity import export_pathway_complementarities
 
 
 logger = mtg_logger(__name__)
 
 
-def _run_orf_prodigal(config):
+def _run_orf_prodigal(config: Config):
     """
-    Wrappper function for running Prodigal 
+    Wrappper function for running Prodigal.
     """
 
     if config.bin_filenames is None:
         logger.error(
             "Bins files have not been provided and they are required for the precalculation steps of microbetag."
-            "Provide the path to the directory with your bins/MAGs under the bins_fasta parameter of the config.yml file."
+            "Provide the path to the directory with your bins/MAGs under the `bins_fasta` parameter of"
+            "the config.yml file."
         )
 
     for bin_fa in config.bin_filenames:
@@ -81,9 +81,9 @@ def _run_orf_prodigal(config):
         run_prodigal(bin_fa, bin_id, config.prodigal)
 
 
-def _run_kegg_annotate(config):
+def _run_kegg_annotate(config: Config):
     """
-    Wrapper for the tools.kegg_annotation() for each genome/MAG and the utils.merge_ko()
+    Wrapper for the tools.kegg_annotation() for each genome/MAG and the utils.merge_ko().
     """
     ko_list = os.path.join(config.kegg_db_dir, "ko_list")
     ko_dic = ko_list_parser(ko_list)
@@ -117,7 +117,7 @@ def _run_kegg_annotate(config):
     merge_ko(config.kegg_pieces_dir, config.ko_merged)
 
 
-def _build_genres(config):
+def _build_genres(config: Config):
     """
     Wrapper function for GENREs in a microbetag pipeline run.
     """
@@ -161,7 +161,18 @@ def _build_genres(config):
         logger.info("User models to be used for the seed complementarity step.")
 
 
-def run_microbetag(config):
+def run_microbetag(config: Config):
+    """
+    Main function for running the microbetag workflow.
+    Based on the Config provided, it will apply several pre-calculation and/or annotation steps.
+
+    Returns:
+        mtg_net: A microbetag-annotated network in CX2 format. CX2 is a JSON-based format, so it is
+                easy to use for the response of the on-the-fly version to the query from MGG. 
+    Note:
+        The mtg_net returned, is also saved as a .cx2 file in the output_directory using a timestamp 
+        on its filename, e.g. mtag_net_2025-05-08_17-47.cx2.
+    """
 
     # ----------------
     # Build network if not available
@@ -177,8 +188,17 @@ def run_microbetag(config):
             "[STEP] NETWORK INFERENCE WITH FLASHWEAVE. "
             "Using the abundance table provided, microbetag is about to build a co-occurrence network.\n"
         )
-
-        run_flashweave(config)
+        try:
+            run_flashweave(config)
+        except Exception:
+            error_msg = (
+                "FlashWeave failed. Check on your abundance data and/or metadata file format.\n "
+                "Also, make sure that the further FlashWeave arguments you provide, they are in line "
+                "with your data's idiosyncracy. \n"
+                "You may consult: https://github.com/meringlab/FlashWeave.jl"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     # ----------------
     # FAPROTAX
@@ -186,8 +206,12 @@ def run_microbetag(config):
     if config.abundance_table is not None and config.faprotax:
 
         logger.info("[STEP] LITERATURE ANNOTATION WITH FAPROTAX")
-
-        run_faprotax(config)
+        try:
+            run_faprotax(config)
+        except Exception:
+            error_msg = "FAPROTAX failed."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     # ----------------
     # phen annotations
@@ -197,13 +221,21 @@ def run_microbetag(config):
         logger.info("[STEP] PREDICTING PHENOTYPIC TRAITS")
 
         if config.bins_ids is not None and not config.onthefly:
-
-            phenotrex_genotype(config=config)
-            phenotrex_predict(config=config)
+            try:
+                phenotrex_genotype(config=config)
+                phenotrex_predict(config=config)
+            except Exception:
+                error_msg = "Running phenotrex on your genomes/bins failed."
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
 
         elif config.onthefly:
-
-            get_phen_traits(config.repr_genomes_present, config.predictions_path)
+            try:
+                get_phen_traits(config.repr_genomes_present, config.predictions_path)
+            except Exception:
+                error_msg = "Phenotypic traits for the genomes under study failed to be exported from microbetagDB."
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
 
     # ----------------
     # Prodigal - ORF prediction
@@ -215,15 +247,19 @@ def run_microbetag(config):
         if config.ko_merged is None and len(os.listdir(config.prodigal)) != len(config.bins_ids):
 
             logger.info("[INTERMEDIATE STEP] PREDICTING ORFs WITH PRODIGAL THROUGH DiTing")
-
-            _run_orf_prodigal(config)
+            try:
+                _run_orf_prodigal(config)
+            except Exception:
+                error_msg = "Prodigal failed to run on your genomes/bins."
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
 
     # ----------------
     # Maps required for otf in case of complementaritites
     # ----------------
     if (config.pathway_complementarity or config.seed_complementarity) and config.onthefly:
 
-        config.pairs_of_interest, config.relative_genomes, config.mspecies_map_df = otf_seqid_ncbi_gtdb__map(config)
+        config.pairs_of_interest, config.relative_genomes, config.mspecies_map_df = otf_seqid_ncbi_gtdb_map(config)
 
     # ----------------
     # Pathway complementarity
@@ -334,7 +370,7 @@ def run_microbetag(config):
     return mtg_net
 
 
-def print_help():
+def _print_help():
     help_message = """
     Usage: microbetag --config <path_to_config_yml>
 
@@ -345,21 +381,27 @@ def print_help():
     print(help_message)
 
 
-def print_version():
+def _print_version():
     print(__version__)
 
 
-def print_config_message():
+def _print_config_message():
+    """Error message for failure during parsing the configuration YAML file."""
+
     conf_message = """
-    The config file you provided cannot be loaded.
+    The config file you provided cannot be parsed properly.
     Please make sure you follow the instructions on the documentation site:
-    https://hariszaf.github.io/microbetag/docs/tutorials/local/#input-and-configyml-files
+    https://hariszaf.github.io/microbetag/docs/tutorials/local/#input-and-configyml-files.
+    Also, make sure that the configuration template you are using is the right one 
+    for the microbetag version you are running.
     """
     logger.error(conf_message)
 
 
 def main():
-
+    """
+    Loads and parses a configuration YAML file and invokes the main function for running the microbetag pipeline.
+    """
     parser = argparse.ArgumentParser(description="Microbetag CLI")
 
     parser.add_argument("--config", "-c", help="Path to the configuration yaml file.")
@@ -370,19 +412,22 @@ def main():
     args = parser.parse_args()
 
     if args.version:
-        print_version()
+        _print_version()
         sys.exit()
 
     elif args.config is None:
-        print_help()
+        _print_help()
         sys.exit(0)
 
     try:
+
         with open(args.config, "r") as yaml_file:
-            config = Config(yaml.safe_load(yaml_file), args.config)
+            yaml_conf = yaml.safe_load(yaml_file)
+
+        config = Config(yaml_conf, args.config)
 
     except yaml.YAMLError:
-        print_config_message()
+        _print_config_message()
         sys.exit(1)
 
     # Run microbetag pipeline

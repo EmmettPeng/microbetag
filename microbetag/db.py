@@ -1,3 +1,13 @@
+"""
+Aim: 
+    Establishing connection and query on microbetagDB.
+    Useful for the API and the on-the-fly version of microbetag, more specifically for the 
+    phenotrex-based phenotypic traits and the pathway complementarity steps. 
+
+Notes:
+    Needs a hidden file called .env_dev.json with the database credentials.
+"""
+
 import os
 import json
 import pickle
@@ -5,23 +15,22 @@ import random
 import pandas as pd
 import mysql.connector
 from mysql.connector import pooling
-from typing import Dict, Set, Tuple
+from typing import Dict, Set, Tuple, List
 from collections import defaultdict
-from .seed_complementarity import load_confidence
+
 from .utils import mtg_logger, convert_to_json_serializable
 
 
-logger = mtg_logger(__file__)
-_KEGG_MAPPINGS = os.path.join(
+_logger_ = mtg_logger(__file__)
+_KEGG_MAPPINGS_ = os.path.join(
     os.path.dirname(__file__), "mtg_maps_models", "kegg_mappings"
 )
+
 # -----------
 # Database
 # -----------
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
-with open(os.path.join(script_dir, ".env_dev.json")) as f:
+__script_dir__ = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(__script_dir__, ".env_dev.json")) as f:
     c = json.load(f)
     db_config = {
         "user": c["Luna"]["USER_NAME"],
@@ -32,23 +41,25 @@ with open(os.path.join(script_dir, ".env_dev.json")) as f:
     }
 
 
-def execute(phrase):
+def execute(phrase: str) -> List[Tuple]:
     """
     Establish a database connection and perform an action
     """
-    # Database connection configuration
-    # [TODO] Switch to "db" when running on the container
     cnx    = mysql.connector.connect(**db_config)
     cursor = cnx.cursor()
+
     cursor.execute(phrase)
+
     rows = cursor.fetchall()
+
     cursor.close()
     cnx.commit()
     cnx.close()
+
     return rows
 
 
-def execute_in_a_pool(cursor, query):
+def execute_in_a_pool(cursor: mysql.connector, query: str):
     """
     Executes a query using a connection from the connection pool.
     """
@@ -61,7 +72,7 @@ def execute_in_a_pool(cursor, query):
         print(query)
 
 
-def init_connection_pool():
+def init_connection_pool() -> mysql.connector.pooling.MySQLConnectionPool:
     """
     Initiates a connection pool.
     A pool opens a number of connections and handles thread safety when providing connections to requesters.
@@ -136,7 +147,7 @@ def get_patric_id_of_gc_accession_list(gc_accession_list=["GCA_003184265.1"]):
             # we have several strains for the same species, meaning, several after the dot parts.
             gc_to_patric_dict[gc] = patricId[0][0] if patricId and patricId[0] else None
 
-    logger.info(gc_to_patric_dict)
+    _logger_.info(gc_to_patric_dict)
 
     return gc_to_patric_dict
 
@@ -221,7 +232,7 @@ def get_phendb_traits(gtdb_genome_id="GCA_018819265.1"):
         rows = execute(phen_query(alt_gtdb_id))
 
     if len(rows) == 0:
-        logger.info(f"Genome {gtdb_genome_id} is not a NCBI accession id. It could be a MGnify or a KEGG one.")
+        _logger_.info(f"Genome {gtdb_genome_id} is not a NCBI accession id. It could be a MGnify or a KEGG one.")
         return 0
 
     query_colnames = "SHOW COLUMNS FROM phenDB;"
@@ -341,20 +352,20 @@ def get_path_compls_for_ncbi_ids(relative_genomes: Dict[str, Set[str]], pairs_of
         pairs_of_interest={("1260918", "1819566")}
     """
 
-    logger.info("===> Building queries for genome pairs...")
+    _logger_.info("===> Building queries for genome pairs...")
     complements_ids_queries = build_complement_queries(relative_genomes, pairs_of_interest)
 
-    logger.info("===> Executing unique queries...")
+    _logger_.info("===> Executing unique queries...")
     unique_queries = {q for genome_pairs in complements_ids_queries.values() for q in genome_pairs.values()}
     unique_queries2comples = get_complement_ids(unique_queries)
 
-    logger.info("===> Mapping complement IDs to genome pairs...")
+    _logger_.info("===> Mapping complement IDs to genome pairs...")
     pairs_to_compl_ids = map_queries_to_pairs(complements_ids_queries, unique_queries2comples)
 
-    logger.info("===> Fetching full complement metadata...")
+    _logger_.info("===> Fetching full complement metadata...")
     all_compl_ids2coloured_compls = get_coloured_complements(pairs_to_compl_ids)
 
-    logger.info("===> Assembling final result...")
+    _logger_.info("===> Assembling final result...")
 
     return build_pairs_complements(pairs_to_compl_ids, all_compl_ids2coloured_compls)
 
@@ -482,7 +493,7 @@ def build_kegg_urls(genome_pair_compls):
     present_kos_color    = "%09%23EAD1DC/"
     complement_kos_color = "%09%2300A898/"
     # Load module-to-map mappings
-    module_map_file = os.path.join(_KEGG_MAPPINGS, "module_map_pairs.tsv")
+    module_map_file = os.path.join(_KEGG_MAPPINGS_, "module_map_pairs.tsv")
     df              = pd.read_csv(module_map_file, sep="\t", header=None, names=["module", "map"])
     df["module"]    = df["module"].str.replace("md:", "", regex=False).str.strip()
     df["map"]       = df["map"].str.strip()

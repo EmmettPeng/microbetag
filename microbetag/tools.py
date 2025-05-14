@@ -1,12 +1,11 @@
 import os
 import sys
 import glob
-import time
 import shutil
 
 import subprocess
 import multiprocessing
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from .utils import (
     get_files_with_suffixes,
@@ -20,10 +19,14 @@ from .utils import (
 from .seed_complementarity import ExportSeedComplementarities
 
 
-logger = mtg_logger(__name__)
+if TYPE_CHECKING:
+    from .config import Config
 
 
-def run_seed_complementarity(config):
+_logger_ = mtg_logger(__name__)
+
+
+def run_seed_complementarity(config: "Config"):
     """
     Invoke PhyloMInt as edited from microbetag team to support parallel calculation of the seed and non seed sets
     and save corresponding sets to json files.
@@ -93,7 +96,7 @@ def hmmsearch(params: List):
     try:
         os.system(cmd)
     except Exception:
-        logger.warning("Something wrong with KEGG hmmsearch!")
+        _logger_.warning("Something wrong with KEGG hmmsearch!")
 
 
 def run_prodigal(fasta, basename, outdir):
@@ -126,33 +129,33 @@ def run_prodigal(fasta, basename, outdir):
     ]
     cmd = " ".join(cmd_para)
     if os.path.exists(faa_file) or os.path.exists(fna_file) or os.path.exists(ffn_file):
-        logger.info("ORFs already predicted for bin: %s", basename)
+        _logger_.info("ORFs already predicted for bin: %s", basename)
     else:
-        logger.info("ORFs to be predicted for bin: %s", basename)
+        _logger_.info("ORFs to be predicted for bin: %s", basename)
         try:
             os.system(cmd)
         except Exception:
-            logger.warning("Something wrong with prodigal annotation!")
+            _logger_.warning("Something wrong with prodigal annotation!")
 
 
-def kegg_annotation(faa, basename, out_dir, db_dir, ko_dic, threads):
+def kegg_annotation(faa: str, basename: str, out_dir: str, db_dir: str, ko_dic: dict, threads: int) -> bool:
     """
     Function to perform KEGG annotation.
     The function invokes hmmsearch.
 
-    Inputs:
-        faa (str): Path to the .faa file of the bin in process
-        basename (str): Bin id
-        out_dir (str): Path to output directory where .hmmout files will be stored
-        db_dir (str): Path to KEGG database directory
-        ko_dic (Dict):
-        threads (int): Number of threads to be used
+    Args:
+        faa:      Filepath to the .faa file of the bin in process
+        basename: Bin id
+        out_dir:  Path to output directory where .hmmout files will be stored
+        db_dir:   Path to KEGG database directory
+        ko_dic:
+        threads:  Number of threads to be used
     """
-    logger.info("KEGG annotation for %s", basename)
+    _logger_.info("KEGG annotation for %s", basename)
     params = []
 
     if not os.path.exists(faa):
-        logger.warn(
+        _logger_.warn(
             f"A .faa file for {basename} is not availavle. microbetag will skip it."
         )
         return False
@@ -185,20 +188,22 @@ def kegg_annotation(faa, basename, out_dir, db_dir, ko_dic, threads):
 
         params.append((threshold_method, info[0], outtype, output, hmm_db, faa))
 
-    logger.info("Number of KEGG processes to be performed: %s", str(len(params)))
+    _logger_.info("Number of KEGG processes to be performed: %s", str(len(params)))
     process = multiprocessing.Pool(threads)
     process.map(hmmsearch, params)
 
     return True
 
 
-def phenotrex_genotype(config):
+def phenotrex_genotype(config: "Config"):
     """
-    Get COGs present in your genomes
+    Runs the `compute-genotype` program of phenotrex to get COGs present in the list of genomes under study.
+
+    Cite:
     """
     if not os.path.exists(config.genotypes_file):
 
-        logger.info("Get phenotrex predictions")
+        _logger_.info("Get phenotrex predictions")
         suffixes = [".fa", ".fasta", ".gz"]
         bin_files = get_files_with_suffixes(config.bins_path, suffixes)
         bin_files_in_a_row = " ".join(bin_files)
@@ -237,9 +242,9 @@ def phenotrex_genotype(config):
             # Run the command
             compute_genotype_command = " ".join(compute_genotype_params)
             if os.system(compute_genotype_command) != 0:
-                logger.info("Try phenotrex genotype for the second time.")
+                _logger_.info("Try phenotrex genotype for the second time.")
                 if os.system(compute_genotype_command) != 0:
-                    logger.error("Phenotrex compute genotype command failed.")
+                    _logger_.error("Phenotrex compute genotype command failed.")
                     sys.exit(0)
         # Local case
         else:
@@ -247,14 +252,16 @@ def phenotrex_genotype(config):
             try:
                 subprocess.run(compute_genotype_command, shell=True, check=True)
             except Exception as e:
-                logger.error(e)
+                _logger_.error(e)
                 sys.exit(1)
 
 
-def phenotrex_predict(config):
-    """ """
-    import subprocess
+def phenotrex_predict(config: "Config"):
+    """ 
+    Runs the `predict` program of `phenotrex` to predict whether a genome does have a trait or not.
 
+    Cite:
+    """
     # Get predictions
     phen_models = [
         os.path.join(config.phen_classes, model)
@@ -270,7 +277,7 @@ def phenotrex_predict(config):
 
         # Skip if predictions already computed
         if os.path.exists(model_predictions_output):
-            logger.info("Predictions already exist for model: %s", model_name)
+            _logger_.info("Predictions already exist for model: %s", model_name)
 
         else:
 
@@ -298,21 +305,24 @@ def phenotrex_predict(config):
                 subprocess.run(predict_trait_command, shell=True, check=True)
 
             except subprocess.CalledProcessError as e:
-                logger.warn(f"Command execution failed with return code {e}")
+                _logger_.warn(f"Command execution failed with return code {e}")
 
     # If no predictions file is present for any classes, probably something went off.
     if not any(glob.glob(os.path.join(config.predictions_path, "*.prediction.tsv"))):
-        logger.error(
+        _logger_.error(
             "No prediction was able to be retrieved with phenotrex. Check your input files."
         )
         sys.exit(0)
 
 
-def run_manta(config):
-    import time
+def run_manta(config: "Config"):
+    """
+    Runs the manta package to perform network clustering.
 
+    Cite:
+    """
     # Build the manta command
-    logger.info("Running manta clustering algorithm.")
+    _logger_.info("Running manta clustering algorithm.")
     manta_output_file = "/".join([config.output_dir, "manta_annotated"])
     manta_params = [
         "manta",
@@ -328,33 +338,34 @@ def run_manta(config):
 
     # Run manta
     try:
-        t1 = time.time()
         if os.system(manta_command) != 0:
-            e = """\
-                The manta clustering algorithm failed.
-                Most likely this is because clusters could not be grouped based on the provided network and the parameters setup of manta.
-                Yet, microbetag will continue to the following steps without considering for clusters.
-            """
-            logger.warning(e)
+            warning_msg = (
+                "The manta clustering algorithm failed."
+                "Most likely this is because clusters could not be grouped based on the provided network "
+                "and the parameters setup of manta."
+                "Yet, microbetag will continue to the following steps without considering for clusters."
+            )
+            _logger_.warning(warning_msg)
             # Changed cfg so the buld_cx_annotated_graph function will not fail.
             config.network_clustering = False
         else:
-            logger.info("""manta ran fine.""")
-        t2 = time.time()
-        time = " ".join(["Network clustering with manta took:", str(t2 - t1), "sec"])
-        logger.info(time)
+            _logger_.info("""manta ran fine.""")
 
     except Exception as e:
-        logger.warning(e)
+        _logger_.warning(e)
         config.network_clustering = False
 
 
-def run_flashweave(config):
+def run_flashweave(config: "Config"):
+    """ 
+    Runs FlashWeave to infer co-occurrence network. 
 
+    Cite:
+    """
     # Run FlashWeave
     from julia.api import Julia
 
-    logger.info("Fix FlashWeave arguments from config.")
+    _logger_.info("Fix FlashWeave arguments from config.")
 
     # Checking for format support.
     if not config.onthefly:
@@ -366,7 +377,7 @@ def run_flashweave(config):
             if isinstance(values["value"], bool):
                 pair_args.add((arg, str(values["value"]).lower()))
             else:
-                logger.error(
+                _logger_.error(
                     f'You need to provide values for "{arg}" argument of FlashWeave.'
                 )
                 sys.exit(0)
@@ -381,28 +392,22 @@ def run_flashweave(config):
 
     learn_in = ",".join(f"{arg[0]}={arg[1]}" for arg in pair_args)
 
-    logger.info("Init Julia through Python!")
-    logger.info("----------------------------   LEARN IN FOR FLASHWEAVE -------------------")
-    t1 = time.time()
+    _logger_.info("Init Julia through Python!")
     jl = Julia(compiled_modules=False)
-    t2 = time.time()
-    logger.info(str(t2 - t1))
     jl.using("FlashWeave")
-    t3 = time.time()
-    logger.info(str(t3 - t2))
 
     # Run FlashWeave based on presence/absence of a metadata file
     if config.metadata_file:
-        logger.info("Running FlashWeaeve along with a metadata file.")
-        logger.info(
+        _logger_.info("Running FlashWeaeve along with a metadata file.")
+        _logger_.info(
             f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", "{config.metadata_file}", {learn_in}))'
         )
         jl.eval(
             f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", "{config.metadata_file}", {learn_in}))'
         )
     else:
-        logger.info("Running FlashWeaeve.")
-        logger.info(
+        _logger_.info("Running FlashWeaeve.")
+        _logger_.info(
             f'save_network("{config.network}", learn_network("{config.flashweave_abd_table}", {learn_in}))'
         )
         jl.eval(
@@ -412,8 +417,12 @@ def run_flashweave(config):
     ensure_same_namespace_after_fw(config)
 
 
-def run_faprotax(config):
-    """Run FAPROTAX collapse_table.py script"""
+def run_faprotax(config: "Config"):
+    """
+    Runs FAPROTAX collapse_table.py script to annotate taxa based on their taxonomy using literature.
+
+    Cite:
+    """
 
     faprotax_params = [
         "python3",

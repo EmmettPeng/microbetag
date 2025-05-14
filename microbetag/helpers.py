@@ -7,9 +7,13 @@ import sys
 import json
 import pickle
 import pandas as pd
+from typing import TYPE_CHECKING
 
-from .utils import resolve_file_path, convert_to_json_serializable, mtg_logger
-from .networks import build_base_graph
+from .utils import resolve_file_path, convert_to_json_serializable, mtg_logger, safe_literal_eval
+from .networks import build_base_graph, get_edgelist
+
+if TYPE_CHECKING:
+    from .config import Config
 
 class Emojis:
     def __init__(self) -> None:
@@ -25,18 +29,15 @@ emojis = Emojis()
 class PathwayComplementarity:
     """
     Sets variables regarding pathway complementarity tasks based on user's config (.yml) file
+
+    Args:
+        config: An instance of the :class:`Config`.
     """
 
     def __init__(self, config):
         self.conf       = config
         self.base_dir   = config.base_dir
         self.output_dir = config.output_dir
-
-        # KEGG related paths to be filled based on user's settings
-        # self.ko_merged        = None
-        # self.kegg_db_dir      = None
-        # self.kegg_annotations = None
-        # self.kegg_pieces_dir  = None
 
         # Init
         self.initialize(config)
@@ -464,7 +465,7 @@ class SeedComplementarityHandler:
             )
 
 
-def manta_input_net(config):
+def manta_input_net(config: "Config"):
     """Build intermediate network file as input for manta"""
 
     manta_input        = build_base_graph(config)
@@ -472,6 +473,72 @@ def manta_input_net(config):
     with open(config.base_network_file, "w") as f:
         json.dump(manta_input_serial, f, indent=4)
     return True
+
+
+def otf_seqid_ncbi_gtdb_map(config: "Config") -> tuple[dict, dict, pd.DataFrame]:
+    """
+    Attention:
+        Strictly for the on-the-fly version
+
+    Builds a dataframe with sequence ids of nodes A and B found associated in the
+    co-occurrence network followed by their corresponding NCBI Taxonomy ids and the
+    representative GTDB genomes.
+
+    Returns:
+        A tuple containing:
+            - pairs_of_interest: {("",""). ("","")}
+            - relative_genomes: {ncbi_id: [gc, gc, gc], ..}
+            - mspecies_map_df: A data frame with the sequence ids of the abundance data and
+                their mapped NCBI Taxonomy IDs and their corresponding GTDB representative genomes.
+    """
+    edgelist_df = get_edgelist(config.network)
+    seq_map_df  = config.otf_seq_tax_df.dropna(subset=["species_ncbi_id"]).copy()
+
+    merged = edgelist_df.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
+                               left_on='node_A', right_on='microbetag_id', how='left') \
+        .rename(columns={'species_ncbi_id': 'species_ncbi_id_A',
+                         'gtdb_gen_repr': 'gtdb_gen_repr_A'}) \
+        .drop(columns='microbetag_id')
+
+    # Merge again to get info for nodeB
+    merged = merged.merge(seq_map_df[['microbetag_id', 'species_ncbi_id', 'gtdb_gen_repr']],
+                          left_on='node_B', right_on='microbetag_id', how='left') \
+        .rename(columns={'species_ncbi_id': 'species_ncbi_id_B',
+                         'gtdb_gen_repr': 'gtdb_gen_repr_B'}) \
+        .drop(columns='microbetag_id')
+
+    # Clean and apply transformations
+    filtered = merged.dropna(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B']).copy()
+
+    filtered[['gtdb_gen_repr_A', 'gtdb_gen_repr_B']] = filtered[
+        ['gtdb_gen_repr_A', 'gtdb_gen_repr_B']].applymap(safe_literal_eval)
+
+    filtered[["species_ncbi_id_A", "species_ncbi_id_B"]] = filtered[
+        ["species_ncbi_id_A", "species_ncbi_id_B"]].astype(int)
+
+    # Explode and drop duplicates
+    exploded        = filtered.explode('gtdb_gen_repr_A').explode('gtdb_gen_repr_B').reset_index(drop=True)
+    mspecies_map_df = exploded.drop_duplicates(subset=['gtdb_gen_repr_A', 'gtdb_gen_repr_B'])
+
+    # Build pairs of interest and relative genomes
+    pairs_of_interest = {
+        (str(row['species_ncbi_id_A']), str(row['species_ncbi_id_B']))
+        for _, row in mspecies_map_df.iterrows()
+    }
+    pairs_of_interest.update({(b, a) for a, b in pairs_of_interest})
+    relative_genomes = {
+        str(row['species_ncbi_id_A']): {str(row['gtdb_gen_repr_A'])}
+        for _, row in mspecies_map_df.iterrows()
+    }
+    relative_genomes.update(
+        {str(row['species_ncbi_id_B']): {str(row['gtdb_gen_repr_B'])}
+         for _, row in mspecies_map_df.iterrows()}
+    )
+
+    outfile = os.path.join(config.output_dir, "edge_map.tsv")
+    mspecies_map_df.to_csv(outfile)
+
+    return pairs_of_interest, relative_genomes, mspecies_map_df
 
 
 # -------------------------------------------------------------------

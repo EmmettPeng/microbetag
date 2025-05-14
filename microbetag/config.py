@@ -27,41 +27,30 @@ from .utils import (
 )
 
 
-logger = mtg_logger(__name__)
-
-
-def load_abundance(abd_file):
-    """
-    Load a tsv/csv format abundance table assuming the sequence id is procided in the first column
-    and the taxonomy in the last one
-
-    :return seq_id_to_taxonomy: A pd.DataFrame with the sequence id and their corresponding genome
-    :return sequence_id_column_name: The name (``str``) of the column with the sequence identifier (e.g. ``seqId``)
-    :return taxonomy_column_name: The name (``str``) of the column with the taxonomy
-    """
-
-    delimiter                  = detect_separator(abd_file)
-    abd_tab_df                 = pd.read_csv(abd_file, sep=delimiter)
-    sequence_id_column_name    = abd_tab_df.columns[0]
-    taxonomy_column_name       = abd_tab_df.columns[-1]
-    seq_id_to_taxonomy         = abd_tab_df[[sequence_id_column_name, taxonomy_column_name]]
-    seq_id_to_taxonomy.columns = ["sequence_id", "taxonomy"]
-    return seq_id_to_taxonomy, sequence_id_column_name, taxonomy_column_name, delimiter
-
-
-def _required(conf, key1, key2):
-    value = conf.get(key1, {}).get(key2)
-    if value is None:
-        raise ValueError(f"Missing required configuration: {key1}.{key2}")
-    return value
+_logger_ = mtg_logger(__name__)
 
 
 class Config:
     """
     Parses a microbetag configuration file (yaml) to init a microbetag run.
+
+    Args:
+        conf: A dictionary where the YAML configuration file has been loaded
+        config_file: Filepath to the configuration YAML file.
+
+    Attention:
+        It is essential to use the corresponding to the microbetag version you are using configuration template file.
+        Otherwise, the Config class will fail to create an instance and microbetag will exit.
+        You may find microbetag configuration templates by version at:
+        https://github.com/hariszaf/microbetag/tree/fix-phylomint/config_files
+
+    Example:
+        >>> with open(args.config, "r") as yaml_file:
+                yaml_conf = yaml.safe_load(yaml_file)
+        >>> conf = Config(yaml_conf, args.config)
     """
 
-    def __init__(self, conf, config_file=None):
+    def __init__(self, conf: dict, config_file: str = None):
 
         # Pass loaded yaml object
         self.yaml = conf
@@ -74,9 +63,6 @@ class Config:
             self.yaml_file = os.stat(config_file)
             self.user_id   = self.yaml_file.st_uid
             self.group_id  = self.yaml_file.st_gid
-
-        # config_wd = os.path.dirname(os.path.realpath(__file__))
-        # self.cwd  = os.path.dirname(config_wd)
 
         self.cwd = os.path.dirname(os.path.realpath(__file__))
 
@@ -111,7 +97,8 @@ class Config:
         bins_fasta     = conf.get("bins_fasta", {}).get("dir_path")
         self.bins_path = resolve_file_path(self.base_dir, bins_fasta)
 
-        # The abundance table is now optional, if no abundance table and no network provided, then it will only run pre-calculations
+        # The abundance table is now optional, if no abundance table and no network provided,
+        # then it will only run pre-calculations
         abd_tbl_filename     = conf.get("abundance_table_file", {}).get("file_path")
         self.abundance_table = resolve_file_path(self.base_dir, abd_tbl_filename)
 
@@ -119,7 +106,7 @@ class Config:
         edge_list    = conf.get("edge_list", {}).get("file_path")
         self.network = resolve_file_path(
             self.base_dir, edge_list
-        )  # os.path.join(self.base_dir, edge_list) if edge_list else None
+        )
 
         # NOTE: Setting precalculations only as true allows to get a Config instance
         # without providing an abundance table or network, meaning you can use the Config instance
@@ -128,12 +115,13 @@ class Config:
         self.precalc_only = precalc_only if precalc_only in [0, 1] else False
 
         if (
-            self.abundance_table is None
-            and self.network is None
-            and precalc_only is False
+            self.abundance_table is None and
+            self.network is None and
+            precalc_only is False
         ):
             raise ValueError(
-                f"You need to provide at least one between an abundance table and a network's edgelist in 3-column format."
+                "You need to provide at least one between an abundance table"
+                "and a network's edgelist in 3-column format."
             )
 
         # IMPORTANT: Sequence to taxonomy map -- required if no abundance table is needed
@@ -150,8 +138,8 @@ class Config:
             and precalc_only is False
         ):
             raise ValueError(
-                f"Since an abundance table is not provided, you need to provide a 2-column file with the sequence id (e.g bin ids)"
-                "and their corresponding taxonomy or taxon name."
+                "Since an abundance table is not provided, you need to provide a 2-column file "
+                "with the sequence id (e.g bin ids) and their corresponding taxonomy or taxon name."
             )
 
         # IMPORTANT: Sequence id to taxonomy map
@@ -176,8 +164,9 @@ class Config:
 
         elif self.abundance_table and self.network:
 
-            # NOTE: Not all sequence ids in the seq_ids need to have a taxonomy in this case -- only those coming from the abundance table
-            # Yet, in case that the network has taxa not present in the abundance table, apparently it will lead to errors.
+            # NOTE: Not all sequence ids in the seq_ids need to have a taxonomy in this case --
+            # only those coming from the abundance table
+            # Yet, in case that the network has taxa not present in the abundance table, it will lead to errors.
             network_df = get_edgelist(self.network)
             net_seq_ids = (
                 pd.concat([network_df.iloc[:, 0], network_df.iloc[:, 1]])
@@ -196,10 +185,11 @@ class Config:
             self.seq_ids = net_seq_ids + abd_seq_ids
 
         else:
-            logger.warning(
+            _logger_.warning(
                 "Neither an abundance table nor a network was procided.\n"
                 "microbetag will only run some pre-calculations not requiring them.\n"
-                f"This is only good to use if you are are quite familiar with microbetag and you know what you are doing. {emojis.WARNING_EMOJI}"
+                "This is only good to use if you are are quite familiar with microbetag"
+                f"and you know what you are doing. {emojis.WARNING_EMOJI}"
             )
 
         # Set bins --- NOTE: CHECK FOR CONFLICTS
@@ -303,14 +293,46 @@ class Config:
                 )
                 _ = torch.load(weights_path, map_location=device)
             except Exception:
-                logger.warn(
+                _logger_.warn(
                     "Could not load the deepnog weights. Please check the deepnog installation and setup."
                 )
                 pass
 
-        logger.info("Configuration file loaded successfully.")
+        _logger_.info("Configuration file loaded successfully.")
 
     def export_to_log(self, log_file="parameters.log"):
+        """Dumps the Config instance in a JSON file."""
         args = convert_to_json_serializable(self.__dict__)
         with open(log_file, "w") as f:
             json.dump(args, f)
+
+
+def load_abundance(abd_file: str) -> tuple[pd.DataFrame, str, str, str]:
+    """
+    Load a tsv/csv format abundance table assuming the sequence id is procided in the first column
+    and the taxonomy in the last one
+
+    Args:
+        abd_file: Filepath to abundance table file.
+
+    Returns:
+        A tuple including:
+            - seq_id_to_taxonomy: A :class:`pandas.DataFrame` with the sequence id and their corresponding taxonomy
+            - sequence_id_column_name: The name of the column with the sequence identifier (e.g. ``seqId``)
+            - taxonomy_column_name: The name of the column with the taxonomy
+    """
+
+    delimiter                  = detect_separator(abd_file)
+    abd_tab_df                 = pd.read_csv(abd_file, sep=delimiter)
+    sequence_id_column_name    = abd_tab_df.columns[0]
+    taxonomy_column_name       = abd_tab_df.columns[-1]
+    seq_id_to_taxonomy         = abd_tab_df[[sequence_id_column_name, taxonomy_column_name]]
+    seq_id_to_taxonomy.columns = ["sequence_id", "taxonomy"]
+    return seq_id_to_taxonomy, sequence_id_column_name, taxonomy_column_name, delimiter
+
+
+def _required(conf, key1, key2):
+    value = conf.get(key1, {}).get(key2)
+    if value is None:
+        raise ValueError(f"Missing required configuration: {key1}.{key2}")
+    return value

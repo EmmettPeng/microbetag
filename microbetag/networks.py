@@ -1,67 +1,17 @@
 import json
 import pandas as pd
 import networkx as nx
+from typing import TYPE_CHECKING
 
 from .utils import detect_separator, find_three_column_format, mtg_logger
+if TYPE_CHECKING:
+    from .config import Config
 
-logger = mtg_logger(__name__)
-
-
-# Base .cx  -- TODO : CHECK ID DEPRECATED
-def build_edge_list(edgelist, metadata_file=None):
-    """
-    Read an edge list and build a dataframe with the corresponding NCBI IDs for each pair,
-    if and only if both OTUs have been mapped to an NCBI tax ID.
-    NOTE: edge_list_of_ncbi_ids() on microbetagApp
-
-    Parameters:
-    - edgelist (str): Path to the edge list file.
-    - metadata_file (str, optional): Path to the metadata file containing elements to exclude.
-
-    Returns:
-    - pd.DataFrame: Filtered edge list with NCBI tax IDs.
-    - pd.DataFrame (optional): Edges that were excluded based on metadata.
-    """
-    # Read the edge list into a DataFrame
-    pd_edgelist = pd.read_csv(
-        edgelist, sep="\t", header=None, names=["node_A", "node_B", "score"]
-    )  # skiprows=
-
-    if metadata_file:
-        # Read the metadata file and create a list of elements to exclude
-        elements_to_exclude = pd.read_csv(
-            metadata_file, sep="\t", header=None, index_col=0
-        ).index.to_list()
-
-        # Define a mask to filter out rows with nodes in the exclusion list
-        mask = ~pd_edgelist.apply(
-            lambda row: any(
-                env in row["node_A"] or env in row["node_B"]
-                for env in elements_to_exclude
-            ),
-            axis=1,
-        )
-
-        # Separate DataFrame based on the mask
-        pd_filtered_edgelist = pd_edgelist[mask].copy()
-        pd_metadata_edges = pd_edgelist[~mask].copy()
-
-        # Create 'pair-of-taxa' column for filtered edges
-        pd_filtered_edgelist["pair-of-taxa"] = (
-            pd_filtered_edgelist["node_A"] + ":" + pd_filtered_edgelist["node_B"]
-        )
-
-        return pd_filtered_edgelist, pd_metadata_edges
-    else:
-        # Return the original edge list if no metadata file is provided
-        pd_edgelist["pair-of-taxa"] = (
-            pd_edgelist["node_A"].astype(str) + ":" + pd_edgelist["node_B"]
-        )
-        return pd_edgelist
+_logger_ = mtg_logger(__name__)
 
 
 # Annotated .cx network related
-def read_cyjson(filename, direction=False):
+def read_cyjson(filename: str, direction: bool = False) -> nx.Graph:
     """
     Function based on the corresponding of the manta library:
     https://github.com/ramellose/manta/blob/master/manta/cyjson.py
@@ -69,11 +19,13 @@ def read_cyjson(filename, direction=False):
     Small utility function for reading Cytoscape json files generated with CoNet.
     In our case, it also gets the layout and adds it as part of the node data.
 
-    Parameters
-    ----------
-    :param filename: Filepath to location of cyjs file.
-    :param direction: If true, graph is imported as a NetworkX DiGraph
-    :return: NetworkX graph.
+    Args:
+        filename: Filepath to `.cyjs` network file.
+        direction: If True, graph is imported as a :class:`networkx.DiGraph`
+
+    Returns:
+        A :class:`networkx.Graph` object.
+        In the microbetag framework, it is being used to load the `manta` output.
     """
     with open(filename) as f:
         data = json.load(f)
@@ -91,12 +43,12 @@ def read_cyjson(filename, direction=False):
         # only modification: 'value' key is not included in CoNet output
         # now graph only needs ID and name values
         node_data = d["data"].copy()
-        position = d["position"]
+        position  = d["position"]
         node_data["position"] = position
         try:
             node = d["data"].get(ident)
         except KeyError:
-            # if no index is found, one is generated
+            # If no index is found, one is generated
             node = i
             i += 1
         if d["data"].get(name):
@@ -113,8 +65,15 @@ def read_cyjson(filename, direction=False):
     return graph
 
 
-def get_edgelist(network_file):
-    """Loads a 3-column network file as pd.DataFrame"""
+def get_edgelist(network_file: str) -> pd.DataFrame:
+    """
+    Loads a 3-column network file as pd.DataFrame
+
+    Args:
+        network_file: Filepath to the edgelist.
+    Returns:
+        A 3-column pandas.DataFrame 
+    """
     delimiter = detect_separator(network_file)
     line_num, header = find_three_column_format(network_file, delimiter)
     edgelist = pd.read_csv(
@@ -124,12 +83,19 @@ def get_edgelist(network_file):
     return edgelist
 
 
-def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
+def build_base_graph(conf: "Config") -> dict:  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
     """
-    Runs if manta has been asked for from the user.
-    manta gets a .cyjs input file.
-    This function builds an non-annotated graph using only the scores and the taxonomies of the taxa of the network.
-    It get a list of dictionaries where each dictionary is an edge and returns the basenetwork in a .cyjs format.
+    Builds a non-annotated graph in a .cyjs format, using only the scores and the taxonomies of the taxa of the network.
+
+    Args:
+        conf: A utils.Config instance.
+
+    Returns:
+        The base network as a dictionary.
+
+    Note:
+        Runs if network clustering has been asked for from the user, converting the initial .csv edgelist to .cyjs
+        since `manta` gets a .cyjs input file.
     """
 
     edgelist = get_edgelist(conf.network)
@@ -151,7 +117,7 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
             is_taxon = True
         if node_name_a not in processed_nodes:
             processed_nodes.add(node_name_a)
-            node_a = build_a_base_node(node_name_a, conf.seq_to_taxon_df, is_taxon)
+            node_a = _build_a_base_node(node_name_a, conf.seq_to_taxon_df, is_taxon)
             nodes.append(node_a)
 
         # Node B
@@ -161,7 +127,7 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
             is_taxon = True
         if node_name_b not in processed_nodes:
             processed_nodes.add(node_name_b)
-            node_b = build_a_base_node(node_name_b, conf.seq_to_taxon_df, is_taxon)
+            node_b = _build_a_base_node(node_name_b, conf.seq_to_taxon_df, is_taxon)
             nodes.append(node_b)
 
         # Edge A-B
@@ -194,7 +160,7 @@ def build_base_graph(conf):  # edgelist_as_a_list_of_dicts, microb_id_taxonomy,
     return base_network
 
 
-def build_a_base_node(node_name, map_seq, is_taxon: bool):
+def _build_a_base_node(node_name, map_seq, is_taxon: bool) -> dict:
     """
     Builds a node for the base network.
     [TODO] Remove not necessary entries.
@@ -210,8 +176,7 @@ def build_a_base_node(node_name, map_seq, is_taxon: bool):
         node["data"]["name"] = case["taxonomy"].item().split(";")[-1]
         try:
             node["data"]["GTDB-representative"] = case["gtdb_gen_repr"]
-        except:
-            # logger.info("Custom genome, thus no GTDB one used for predictions.")
+        except Exception:
             pass
 
     return node
