@@ -26,18 +26,20 @@ extensions = [
     # # To link to pyqt5 docs
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",  # i had it muted; this is related to the .inv files (intersphinx_mapping) to have the links to types
-    # when i enable it though, it breaks the lightbox popup
+                               # when i enable it though, it breaks the lightbox popup
     "sphinx.ext.mathjax",
     "sphinx.ext.viewcode",
-    "sphinx.ext.napoleon",
+    "sphinx.ext.napoleon",  # NOTE (Haris Zafeiropoulos, 2025-05-13): Napoleon supports Google-style and NumPy-style docstrings out of the box.
     "sphinx.ext.autosummary",
-    # "sphinx_qt_documentation",        # i had it muted
+    # "sphinx_qt_documentation",         # i had it muted
     # "nbsphinx",                        # i had it muted;  when i enable this lighbox fails and no latex good
-    # "sphinx_autoapi.extension",              # i had it muted
+    # "sphinx_autoapi.extension",        # i had it muted
     "autoapi.extension",
-    # "sphinx_search.extension",             # i had it muted
+    # "sphinx_search.extension",         # i had it muted
     # For using CONTRIBUTING.md.
     "myst_parser",
+
+    "sphinxcontrib.bibtex"
 ]
 
 
@@ -46,8 +48,12 @@ autoapi_options = [
     "members",
     "undoc-members",
     "show-inheritance",
+    "show-module-summary",      # NOTE (Haris Zafeiropoulos, 2025-05-13): This is essential to have the table on top!!
+    "special-members"
 ]
 
+# Refs
+bibtex_bibfiles = ["references.bib"]
 
 def autoapi_skip_member(app, what, name, obj, skip, options):
     # Skip all attributes globally
@@ -141,3 +147,17 @@ mermaid_params = []
 if "READTHEDOCS" in os.environ:
     # Required to build with sphinxcontrib-mermaid on readthedocs
     mermaid_params.extend(["-p" "puppeteer-config.json"])
+
+# Example configuration for intersphinx: refer to the Python standard library.
+intersphinx_mapping = {
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
+    # 'python': ('http://docs.python.org/', None),
+    'python': ('https://docs.python.org/3', 'https://docs.python.org/3/objects.inv'),
+    'numpy': ("http://docs.scipy.org/doc/numpy/", None),
+    'scipy': ("http://docs.scipy.org/doc/scipy/reference", None),
+    'networkx': ("https://networkx.org/documentation/stable/", None),
+    # 'mysql': ('https://dev.mysql.com/doc/', None),  # NOTE (Haris Zafeiropoulos, 2025-05-13): does not work
+    'dash_cytoscape': ("https://dash.plotly.com/cytoscape/reference", None)
+}
+
+intersphinx_cache_limit = 10  # days to keep the cached inventories
