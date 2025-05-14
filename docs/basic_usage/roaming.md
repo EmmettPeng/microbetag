@@ -18,6 +18,7 @@ description: "tutorial on how to parse the annotated network using the MGG app"
 
 We will use the `microbetag`-annogated network of the [network-based example-case](from_net); you can get directly its corresponding `microbetag` - annotated network from [here][1].
 ```
+
 Once an annotated network is returned (or 
 <!-- [loaded](../basic_usage/load) -->
 loaded
@@ -48,10 +49,10 @@ the **Nodes** and the **Edges** panels.
 By default, the **Nodes** panel is selected. 
 Let's start with that then!
 
-{: .note}
+```{note}
 Remember that you can always use the Cytoscape core features on a `microbetag`-annotated network.
 That means for example, in case you would prefer a different style than the one provided, you can always change node and edges colors and shapes etc. You can do this always for groups of nodes/edges. Anything you could do with a network on Cytoscape is still an option for a `microbetag`-annotated network.
-
+```
 
 ## Investigating nodes' annotations
 

@@ -13,7 +13,9 @@ usemath: true
 ## Overview
 
 `microbetag` gets as input either a co-occurrence network or an abundance table where either [Silva](https://www.arb-silva.de) or [GTDB](https://gtdb.ecogenomic.org) taxonomies have been used. 
-When an abundance table is provided, microbetag firsts builds a co-occurrence network using [FlashWeave](https://github.com/meringlab/FlashWeave.jl) [1].
+When an abundance table is provided, microbetag firsts builds a co-occurrence network using [FlashWeave](https://github.com/meringlab/FlashWeave.jl) 
+{cite:p}`tackmann2019rapid`.
+<!-- [1]. -->
 
 Once a network is available, `microbetag` identifies the taxonomic level that has been assigned to each entry, for example 
 `D_0__Bacteria; D_1__Firmicutes; D_2__Clostridia; D_3__Clostridiales; D_4__Ruminococcaceae; D_5__uncultured; D_6__uncultured rumen bacterium`
@@ -23,10 +25,14 @@ is at the genus level and proceeds with the network annotation.
 
 The network annotation consists of 4 major modules: 
 
-- **literature oriented** taxa functional annotation using [**FAPROTAX**](https://pages.uoregon.edu/slouca/LoucaLab/archive/FAPROTAX/lib/php/index.php) [2]
-- **genomic oriented** taxa functional annotation using an updated, local instance of [**phenDB**](https://phendb.org) using all representative genomes of GTDB and [`phenotrex`](https://phenotrex.readthedocs.io/en/latest/usage.html)
+- **literature oriented** taxa functional annotation using [**FAPROTAX**](https://pages.uoregon.edu/slouca/LoucaLab/archive/FAPROTAX/lib/php/index.php) {cite:p}`louca2016decoupling`
+<!-- [2] -->
+- **genomic oriented** taxa functional annotation using an updated, local instance of [**phenDB**](https://phendb.org) using all representative genomes of GTDB and [`phenotrex`](https://phenotrex.readthedocs.io/en/latest/usage.html) {cite:p}`feldbauer2015prediction`
 - **pathway complementarity** annotations between taxa that have been found co-correlated in the produced (or user provided) network; both taxa were considered as potential donor and beneficiary (see [Pathway complementarity](#pathway-complementarity) for more)
-- **complementarity** [3] and **competition** [4] **seed scores** between draft metabolic reconstructions of GTDB representative genomes, mapped to the input taxa using [**PhyloMInt**](https://github.com/mgtools/PhyloMint) (see [Seed-based complementarities and scores](#seed-scores-and-complements-based-on-genome-scale-draft-reconstructions-gems) for more) 
+- **complementarity** {cite:p}`levy2015netcooperate` 
+  and **competition** {cite:p}`kreimer2012netcmpt` 
+  <!-- [4]  -->
+  **seed scores** between draft metabolic reconstructions of GTDB representative genomes, mapped to the input taxa using [**PhyloMInt**](https://github.com/mgtools/PhyloMint) (see [Seed-based complementarities and scores](#seed-scores-and-complements-based-on-genome-scale-draft-reconstructions-gems) for more) 
 
 **Nodes** that have species or strain taxonomic annotation are mapped to their closest representative GTDB genomes and based on those, they get phenDB-like and FAPROTAX functional annotations. Taxa (nodes) that have been taxonomically annotated at the family or order level are annotated using FAPROTAX.
 
@@ -42,7 +48,8 @@ Below, you will find further background and examples of each annotation type.
 ### Based on FAPROTAX
 
 
-[**FAPROTAX**](https://pages.uoregon.edu/slouca/LoucaLab/archive/FAPROTAX/lib/php/index.php) [2] maps taxa (e.g. genera or species) 
+[**FAPROTAX**](https://pages.uoregon.edu/slouca/LoucaLab/archive/FAPROTAX/lib/php/index.php) {cite:p}`louca2016decoupling` 
+maps taxa (e.g. genera or species) 
 to metabolic or other ecologically relevant functions based on the literature for cultured representatives. 
 It currently comprises more than 7600 annotation rules, covering ~4700 prokaryotic clades. 
 Each annotation rule comes with literature citations and can, thus, be independently verified.
@@ -115,7 +122,9 @@ between all the donor's and the beneficiary's genomes.
 
 ## Seed scores and complements based on genome-scale draft reconstructions (GEMs)
 
-Based on Borenstein *et al.* (2008) [5] a metabolic network's “seed set” is the set of compounds that, based on the network topology, are exogenously acquired".
+Based on Borenstein *et al.* (2008) {cite:p}`borenstein2008large`
+<!-- [5]  -->
+a metabolic network's “seed set” is the set of compounds that, based on the network topology, are exogenously acquired".
 Here is an example (based on the [Borenstein lab webpage](https://borensteinlab.sites.tau.ac.il/items-1/netseed)):
 
 ![seed_concept](../_static/img/seed_concept_example.png)
@@ -212,16 +221,11 @@ In this example, we have a pair of simple networks. The top network has two seed
 
 
 ## References
-
-[1] Tackmann, J., Rodrigues, J.F.M. and von Mering, C., 2019. Rapid inference of direct interactions in large-scale ecological networks from heterogeneous microbial sequencing data. Cell systems, 9(3), pp.286-296, DOI: [10.1016/j.cels.2019.08.002](https://doi.org/10.1016/j.cels.2019.08.002).
-
-[2] Louca, S., Parfrey, L.W., Doebeli, M. (2016) - Decoupling function and taxonomy in the global ocean microbiome. Science 353:1272-1277, DOI: [10.1126/science.aaf4507](https://doi.org/10.1126/science.aaf4507).
-
-[3] Levy, R., Carr, R., Kreimer, A., Freilich, S., Borenstein, E. "NetCooperate: a network-based tool for inferring host-microbe and microbe-microbe cooperation." BMC Bioinformatics, 2015.
-
-[4] Kreimer, A., Doron-Faigenboim, A., Borenstein, E., Freilich, S. "NetCmpt: a network-based tool for calculating the metabolic competition between bacterial species." Bioinformatics, 2012.
-
-[5] Borenstein, E., Kupiec, M., Feldman, M.W. and Ruppin, E., 2008. Large-scale reconstruction and phylogenetic analysis of metabolic environments. Proceedings of the National Academy of Sciences, 105(38), pp.14482-14487.
+<!-- https://sphinxcontrib-bibtex.readthedocs.io/en/latest/usage.html -->
+<!-- alpha : locally works and it's the one they use in math papers e.g [MILO20] -->
+```{bibliography}
+:style: unsrt
+```
 
 
 ```{toctree}

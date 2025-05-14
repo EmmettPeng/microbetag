@@ -273,7 +273,7 @@ we get
 }
 ```
 
-where, in the first case `[0]`, *Streptomyces* is considered as $$speciesA$$ and *Afpia* as $$speciesB$$, and in case `[1]` the other way around. 
+where, in the first case `[0]`, *Streptomyces* is considered as $speciesA$ and *Afpia* as $speciesB$, and in case `[1]` the other way around. 
 
 
 If I run the same with the reverse order on the Tax Ids,
@@ -323,12 +323,12 @@ which returns
 
 ```{important}
 The function returns **two pairs of seed scores**, in which:
-* the first genome provided is considered as $$speciesA$$ for the seed score indices,
-* and the second one as $$speciesB$$.
+* the first genome provided is considered as $speciesA$ for the seed score indices,
+* and the second one as $speciesB$.
 ```
 <!-- In its current version, our API is not clear enough, and you need to remember that 
-the **first entry** considers the first genome as $$speciesA$$, 
-and the second genome as $$speciesB$$, 
+the **first entry** considers the first genome as $speciesA$, 
+and the second genome as $speciesB$, 
 while in the **second entry** it is the other way around. 
 This will be fixed in a future release.  -->
 
