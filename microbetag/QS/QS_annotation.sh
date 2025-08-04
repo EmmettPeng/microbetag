@@ -2,5 +2,5 @@
 
 for genome in ../genome_dir/*.faa;do
     genome_name=$(basename "$genome" .faa)
-    hmmsearch --tblout "kegg_hmm_results/${genome_name}_results.tbl" qs_kegg_genes.hmm "$genome" > "kegg_hmm_results/${genome_name}_log.txt"
+    hmmsearch --tblout "kegg_hmm_results/${genome_name}_results.tbl" m02024_genes.hmm "$genome" > "kegg_hmm_results/${genome_name}_log.txt"
 done
